@@ -1,0 +1,4 @@
+- insert:
+    - id: iteron-skill
+      name: '@local/iteron-skill'
+      config: {}

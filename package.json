@@ -1,0 +1,35 @@
+{
+  "name": "@local/iteron-skill",
+  "description": "Iteron skill for DeepSeek Harness: multistage tasks with verifiable milestones, indexed plans, stage evidence, and distilled methods",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "SKILL.md",
+    "references",
+    "templates",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check-records.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
