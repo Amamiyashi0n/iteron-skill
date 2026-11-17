@@ -202,3 +202,69 @@ test('credential-looking text is flagged as a warning', () => {
   const files = edit(validTask(), RECORDS, (lines) => [...lines, `- observed: ${sample}`])
   assert.ok(codesOf(files).includes('warning:possible-secret'))
 })
+
+test('ordinary text that mentions a credential word is not flagged', () => {
+  const files = edit(validTask(), RECORDS, (lines) => [
+    ...lines,
+    '- observed: password reset worked',
+    '- observed: token: none',
+    '- observed: api_key: <redacted>',
+  ])
+  assert.ok(!codesOf(files).includes('warning:possible-secret'))
+})
+
+test('a reused block that cites an existing stage is accepted', () => {
+  const files = edit(validTask(), RECORDS, (lines) => [
+    ...lines,
+    '',
+    '### Verification Block',
+    '',
+    '- criteria: O-1 Row count matches the feed.',
+    `- reused: [\`${PLAN} / T-001 / 1\`](#stage-${PLAN}-t-001-1); git diff --stat reports no changes.`,
+    '- result: pass',
+    '- evidence_status: current',
+  ])
+  assert.deepEqual(codesOf(files), [])
+})
+
+test('a reused block must cite an existing stage', () => {
+  const files = edit(validTask(), RECORDS, (lines) => [
+    ...lines,
+    '',
+    '### Verification Block',
+    '',
+    '- criteria: O-1 Row count matches the feed.',
+    `- reused: [\`${PLAN} / T-009 / 1\`](#stage-${PLAN}-t-009-1); no changes.`,
+    '- result: pass',
+    '- evidence_status: current',
+  ])
+  assert.ok(codesOf(files).includes('error:reused-source-broken'))
+})
+
+test('an acceptance_ref behind a newer pass is a warning', () => {
+  const files = edit(validTask(), RECORDS, (lines) => [
+    ...lines,
+    '',
+    `<a name="stage-${PLAN}-t-001-2"></a>`,
+    '',
+    `## ${PLAN} / T-001 / 2`,
+    '',
+    '- delivery: Exported the amounts again.',
+    '',
+    '### Verification Block',
+    '',
+    '- criteria: Rows match.',
+    '- subject: amounts.jsonl against feed.csv.',
+    '- revision: def5678, clean working tree',
+    '- method: Compare the id sequences.',
+    '- result: pass',
+    '- observed: 3 rows in both files.',
+    '- evidence_status: current',
+  ])
+  assert.deepEqual(codesOf(files), ['warning:acceptance-ref-stale'])
+})
+
+test('plan tables are read by column name', () => {
+  const files = edit(validTask(), PLAN_PATH, (lines) => lines.map((line) => line.replace('| acceptance_ref |', '| evidence |')))
+  assert.ok(codesOf(files).includes('error:table-column-missing'))
+})

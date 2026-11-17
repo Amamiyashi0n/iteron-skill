@@ -30,6 +30,7 @@ The model sees the skill in its catalog and loads `SKILL.md` on demand. `referen
 | `SKILL.md` | Skill instructions; its frontmatter supplies the catalog name and description |
 | `references/task-record.md` | Record rules and replanning conventions |
 | `templates/` | Copyable templates for creating task records |
+| `scripts/check-records.mjs` | Checker for Iteron records in a target repository; `npm run check` runs it |
 | `index.js` | Host plugin that registers the skill provider on `ctx.skills` |
 | `cordis.patch.yml` | Bundle patch that loads the plugin |
 | `locale/*.json`, `icon.svg` | Title, description, and icon shown in Plugins |

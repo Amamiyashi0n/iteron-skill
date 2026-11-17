@@ -45,3 +45,8 @@ test('relative links in the skill docs resolve', () => {
     }
   }
 })
+
+test('rejects frontmatter shapes the parser cannot read', () => {
+  assert.throws(() => parseSkillFile('---\nname: a\ndescription: >\n  folded\n---\n'), /block scalar/)
+  assert.throws(() => parseSkillFile('---\nname: a\ndescription: b\n  continued\n---\n'), /continuation/)
+})

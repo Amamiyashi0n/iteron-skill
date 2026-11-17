@@ -20,13 +20,15 @@ const ITEM_ID = /^T-\d{3,}$/
 const STAGE_HEADING = /^## (\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?) \/ (.+)$/
 const ANCHOR = /<a name="([^"]+)"><\/a>/g
 const LINK_TO_STAGE = /#(stage-[^)\s]+)/
-const CREDENTIAL_WORDS = /\b(password|passwd|secret|token|api[_-]?key)\b/i
-const ASSIGNMENT = /[:=]\s*\S/
+const CREDENTIAL_ASSIGNMENT = /\b(?:password|passwd|secret|token|api[_-]?key)\b["'`]?\s*[:=]\s*(\S.*)$/i
+const BENIGN_SECRET_VALUE = /^(?:none|n\/a|-|redacted|\[redacted\]|\*{3,}|<[^>]*>)\.?$/i
 const PLAN_STATUSES = ['pending', 'in_progress', 'blocked', 'completed']
 const RESULTS = ['pass', 'fail', 'unverified']
 const METHOD_STATUSES = ['active', 'historical']
 const METHOD_FIELDS = ['title', 'status', 'applies_when', 'route', 'check', 'source', 'search_terms']
 const RETRY_LIMIT = 3
+const INDEX_COLUMNS = ['task_id', 'title', 'search_terms', 'status', 'plan_link']
+const PLAN_COLUMNS = ['item_id', 'requirement', 'expected_result', 'depends_on', 'acceptance_criteria', 'status', 'acceptance_ref']
 
 const unticks = (value = '') => value.replace(/`/g, '').trim()
 const criterionOf = (block) => /^(O-\d+)\b/.exec(block.get('criteria') ?? '')?.[1]
@@ -40,11 +42,24 @@ function readLines(path) {
 function tableRows(lines, firstColumn) {
   const start = lines.findIndex((line) => line.startsWith(`| ${firstColumn} |`))
   if (start < 0) return []
+  const headers = lines[start].slice(1, -1).split('|').map((cell) => cell.trim())
   const rows = []
+  rows.headers = headers
   for (let i = start + 2; i < lines.length && lines[i].startsWith('|'); i++) {
-    rows.push(lines[i].slice(1, -1).split('|').map((cell) => cell.trim()))
+    const cells = lines[i].slice(1, -1).split('|').map((cell) => cell.trim())
+    // `by` lets callers read a cell by its column name instead of its position.
+    cells.by = Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? '']))
+    rows.push(cells)
   }
   return rows
+}
+
+/** Reports a missing table or required columns that its header row lacks. */
+function checkColumns(rows, required, label, where, add) {
+  if (!rows.headers) return add('error', 'table-missing', where, `${label} table is missing`)
+  for (const column of required) {
+    if (!rows.headers.includes(column)) add('error', 'table-column-missing', where, `${label} table has no ${column} column`)
+  }
 }
 
 /** `- key: value` lines as a map. The first occurrence of a key wins. */
@@ -109,7 +124,8 @@ function scanFile(path, where, add) {
   readLines(path).forEach((line, index) => {
     const at = `${where}:${index + 1}`
     if (line.includes('{{')) add('error', 'placeholder', at, 'unfilled {{...}} placeholder')
-    if (CREDENTIAL_WORDS.test(line) && ASSIGNMENT.test(line)) add('warning', 'possible-secret', at, 'looks like a credential; redact it or link to a secured location')
+    const secret = CREDENTIAL_ASSIGNMENT.exec(line)
+    if (secret && !BENIGN_SECRET_VALUE.test(secret[1].trim())) add('warning', 'possible-secret', at, 'looks like a credential; redact it or link to a secured location')
   })
 }
 
@@ -149,13 +165,14 @@ function loadStages(path, where, add) {
       const key = `${section.plan}/${first}`
       attempts.set(key, [...(attempts.get(key) ?? []), Number(second)])
     }
-    stages.set(anchor, { kind, plan: section.plan, item: first, attempt: Number(second), blocks })
+    stages.set(anchor, { kind, plan: section.plan, item: first, attempt: Number(second), heading: section.heading, blocks })
   }
   for (const [key, numbers] of attempts) {
     const sorted = [...numbers].sort((a, b) => a - b)
     if (new Set(sorted).size !== sorted.length) add('error', 'attempt-duplicate', where, `${key} repeats an attempt number`)
     else if (sorted.some((n, i) => n !== i + 1)) add('warning', 'attempt-gap', where, `${key} attempts are not numbered 1, 2, 3...`)
   }
+  checkReused(stages, where, add)
   return stages
 }
 
@@ -167,6 +184,25 @@ function trailingFailures(stages, plan, item) {
   let run = 0
   for (const stage of history) run = lastResult(stage) === 'pass' ? 0 : run + 1
   return run
+}
+
+/** Highest attempt number whose last Verification Block passed, for one item under one plan. */
+function latestPass(stages, plan, item) {
+  return Math.max(0, ...[...stages.values()]
+    .filter((stage) => stage.kind === 'stage' && stage.plan === plan && stage.item === item && lastResult(stage) === 'pass')
+    .map((stage) => stage.attempt))
+}
+
+/** A reused Verification Block must cite a stage that exists in stages/records.md. */
+function checkReused(stages, where, add) {
+  for (const stage of stages.values()) {
+    for (const block of stage.blocks) {
+      if (!block.has('reused')) continue
+      const link = LINK_TO_STAGE.exec(block.get('reused'))
+      if (!link) add('error', 'reused-link-missing', where, `${stage.heading}: a reused block links to no stage`)
+      else if (!stages.has(link[1])) add('error', 'reused-source-broken', where, `${stage.heading}: a reused block cites ${link[1]}, which is not in stages/records.md`)
+    }
+  }
 }
 
 function checkMethods(path, where, stages, add) {
@@ -217,8 +253,8 @@ function checkTask(id, dir, row, add) {
   for (const heading of ['## Resume Point', '## Current Plan']) {
     if (!planLines.includes(heading)) add('error', 'plan-section-missing', where, `${heading} is missing`)
   }
-  if (row && unticks(row[3] ?? '') !== status) {
-    add('error', 'index-status-mismatch', 'agent.md', `${id} is ${unticks(row[3] ?? '')} in the index but ${status} in its plan; the plan wins`)
+  if (row && unticks(row.by.status ?? '') !== status) {
+    add('error', 'index-status-mismatch', 'agent.md', `${id} is ${unticks(row.by.status ?? '')} in the index but ${status} in its plan; the plan wins`)
   }
 
   const overallCriteria = [...planText.matchAll(/^ {2}- (O-\d+):/gm)].map((match) => match[1])
@@ -229,9 +265,11 @@ function checkTask(id, dir, row, add) {
   const seen = new Set()
   const itemStatuses = []
   let maxNumber = 0
-  for (const cells of tableRows(planLines, 'item_id')) {
-    const itemId = unticks(cells[0] ?? '')
-    const itemStatus = unticks(cells[5] ?? '')
+  const planRows = tableRows(planLines, 'item_id')
+  checkColumns(planRows, PLAN_COLUMNS, 'Current Plan', where, add)
+  for (const cells of planRows) {
+    const itemId = unticks(cells.by.item_id ?? '')
+    const itemStatus = unticks(cells.by.status ?? '')
     itemStatuses.push(itemStatus)
     if (ITEM_ID.test(itemId)) maxNumber = Math.max(maxNumber, Number(itemId.slice(2)))
     else add('error', 'item-id', where, `invalid item id ${itemId}`)
@@ -239,13 +277,15 @@ function checkTask(id, dir, row, add) {
     seen.add(itemId)
     if (!PLAN_STATUSES.includes(itemStatus)) add('error', 'item-status', where, `${itemId} has invalid status ${itemStatus}`)
     if (itemStatus === 'completed') {
-      const link = LINK_TO_STAGE.exec(cells[6] ?? '')
+      const link = LINK_TO_STAGE.exec(cells.by.acceptance_ref ?? '')
       const stage = link ? stages.get(link[1]) : undefined
       if (!link) add('error', 'acceptance-ref-missing', where, `${itemId} is completed but its acceptance_ref links to no stage`)
       else if (!stage) add('error', 'acceptance-ref-broken', where, `${itemId} links to ${link[1]}, which is not in stages/records.md`)
       else {
         if (lastResult(stage) !== 'pass') add('error', 'acceptance-ref-not-pass', where, `${itemId} is completed but its acceptance stage did not pass`)
         if (stage.plan !== planTimestamp) add('warning', 'acceptance-ref-old-plan', where, `${itemId} points at a stage from plan ${stage.plan}`)
+        const latest = latestPass(stages, stage.plan, itemId)
+        if (latest > stage.attempt) add('warning', 'acceptance-ref-stale', where, `${itemId} links to attempt ${stage.attempt}, but attempt ${latest} is the latest pass`)
       }
     }
     const failures = trailingFailures(stages, planTimestamp, itemId)
@@ -299,8 +339,10 @@ export function checkRoot(root) {
   }
   scanFile(indexPath, 'agent.md', add)
   const indexRows = new Map()
-  for (const cells of tableRows(readLines(indexPath), 'task_id')) {
-    const id = unticks(cells[0] ?? '')
+  const indexTable = tableRows(readLines(indexPath), 'task_id')
+  checkColumns(indexTable, INDEX_COLUMNS, 'Task index', 'agent.md', add)
+  for (const cells of indexTable) {
+    const id = unticks(cells.by.task_id ?? '')
     if (!TASK_ID.test(id)) continue
     if (indexRows.has(id)) add('error', 'index-duplicate', 'agent.md', `${id} is listed more than once`)
     else indexRows.set(id, cells)

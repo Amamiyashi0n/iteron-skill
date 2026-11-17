@@ -26,8 +26,14 @@ export function parseSkillFile(text) {
   const fields = {}
   for (const line of match[1].split(/\r?\n/)) {
     const m = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line)
-    if (!m) continue
+    if (!m) {
+      if (/^\s+\S/.test(line)) throw new Error('SKILL.md frontmatter: indented continuation lines are not supported')
+      continue
+    }
     let value = m[2].trim()
+    if (/^[>|][+-]?$/.test(value)) {
+      throw new Error(`SKILL.md frontmatter: ${m[1]} uses a block scalar; write the value on one line`)
+    }
     if (/^(['"]).*\1$/.test(value)) value = value.slice(1, -1)
     fields[m[1]] = value
   }

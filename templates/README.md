@@ -27,6 +27,7 @@ Append blocks to the end of their file; never insert them between existing block
 - `{{item_anchor}}` is the item ID in lowercase, such as `t-001`. Anchors use only lowercase letters, digits, and hyphens.
 - `{{attempt}}` is the verification attempt number for a stage or overall closure, starting from 1. Increment it each time you verify the same item or run the overall check again.
 - `{{n}}` is the method number for distillation, starting from 1 for the first method extracted from an item.
+- `{{source_attempt}}` is the attempt number of the stage whose evidence a `reused` line cites.
 - `{{claimed_at}}` is the UTC claim time in `yyyy-MM-dd_HH-mm-ss` format, the same format used for task IDs.
 
 A finished record contains no `{{`. Search the task directory for `{{` after every write; any match is an unfilled field.

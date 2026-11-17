@@ -18,6 +18,7 @@
     "cordis.patch.yml",
     "SKILL.md",
     "references",
+    "scripts/check-records.mjs",
     "templates",
     "locale/*.json",
     "icon.svg",
