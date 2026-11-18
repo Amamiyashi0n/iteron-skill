@@ -182,6 +182,17 @@ test('a checked block needs a revision', () => {
   assert.ok(codesOf(files).includes('error:revision-missing'))
 })
 
+test('a revision must contain the recorded hash when it cites one', () => {
+  const placeholder = '- revision: `index.html` SHA-256 `$hash`; source commit `abc1234`.'
+  const original = '- revision: abc1234, clean working tree'
+  const files = edit(validTask(), RECORDS, lines => replaceAll(lines, original, placeholder))
+  assert.deepEqual(codesOf(files), ['error:revision-unresolved', 'error:revision-unresolved'])
+
+  const recordedHash = placeholder.replace('$hash', '58f0ac0de1c0bcef093cb46630501936b2f02323ee2987b7722e40d6429fbf2f')
+  files[RECORDS] = replaceAll(files[RECORDS], placeholder, recordedHash)
+  assert.deepEqual(codesOf(files), [])
+})
+
 test('a failing overall criterion blocks closure', () => {
   const files = edit(validTask(), RECORDS, (lines) => replaceAll(lines, '- result: pass', '- result: fail'))
   assert.ok(codesOf(files).includes('error:overall-criterion'))

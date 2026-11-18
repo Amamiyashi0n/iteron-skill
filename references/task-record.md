@@ -185,7 +185,7 @@ The plan item's `acceptance_ref` points to the second stage: `[2026-01-15_08-31-
 
 ### Evidence freshness
 
-`revision` records the exact state that was checked, so a later session can tell whether the evidence still applies. Record it when the check runs, not afterwards.
+`revision` records the exact state that was checked, so a later session can tell whether the evidence still applies. Record it when the check runs. When writing a hash from a script, save the computed value and read back the record to confirm it matches the check output.
 
 - For committed inputs, record the commit that was tested. Before reuse, compare the relevant paths against that commit and check for relevant untracked inputs.
 - For modified or untracked inputs, record their paths and content hashes at verification time. Compare those hashes with the current files before reuse, including when the working tree is now clean. A commit comparison alone cannot identify the bytes tested in a dirty tree.

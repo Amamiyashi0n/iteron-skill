@@ -4,6 +4,7 @@ import { readLines, readAnchors, parseRecordSections, parseVerificationBlocks } 
 export const ITEM_ID = /^T-\d{3,}$/
 export const LINK_TO_STAGE = /#(stage-[^)\s]+)/
 const RESULTS = ['pass', 'fail', 'unverified']
+const UNRESOLVED_REVISION = /(?:^|\bsha-?256[\s:=]+)`?\$(?:\{\w+\}|\w+)(?=$|[`\s,;])/i
 
 export function hasCurrentPass(block) {
   return block.get('result') === 'pass' && block.get('evidence_status') !== 'historical'
@@ -47,7 +48,11 @@ export function readVerificationRecords(path, location, report) {
       blocks.push(fields)
       if (!RESULTS.includes(fields.get('result'))) report('error', 'block-result', location, `${section.heading}: result must be pass, fail or unverified`)
       if (!fields.has('criteria')) report('error', 'criteria-missing', location, `${section.heading}: Verification Block has no criteria`)
-      if (!fields.has('reused') && !fields.has('revision')) report('error', 'revision-missing', location, `${section.heading}: a checked block needs a revision`)
+      if (!fields.has('reused') && !fields.get('revision')) {
+        report('error', 'revision-missing', location, `${section.heading}: a checked block needs a revision`)
+      } else if (UNRESOLVED_REVISION.test(fields.get('revision') ?? '')) {
+        report('error', 'revision-unresolved', location, `${section.heading}: write the computed value in revision; a shell variable was left in the record`)
+      }
     }
     if (kind !== 'replan' && blocks.length === 0) report('warning', 'stage-without-block', location, `${section.heading} has no Verification Block`)
     if (kind === 'item') {
