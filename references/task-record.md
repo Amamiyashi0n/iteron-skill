@@ -24,13 +24,13 @@ Create every file and block from the copyable [templates](../templates/README.md
 
 ## Discovery pointer
 
-A new session does not know the index exists unless something points to it. When registering the first task in a repository, make sure the root `AGENTS.md` contains this line, adding it if no line there already mentions `agent.md`:
+A new session can discover the index through the project's agent instructions. When registering the first task, add this line to the root instruction file the current agent loads if it does not already point to `agent.md`:
 
 ```markdown
 Staged tasks are indexed in `agent.md`. Load the iteron-skill skill before planning, resuming, or changing them.
 ```
 
-If the root has no `AGENTS.md` but has `CLAUDE.md`, add the line there instead. If neither exists, create `AGENTS.md` with only this line. Mention the change in the next report so the user can keep or revert it.
+Use `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex or another agent that loads it. Create the relevant file with just the pointer if it is missing. If the agent has no known project instruction file, mention the index location in the report. Report any instruction file you updated.
 
 ## Search order
 

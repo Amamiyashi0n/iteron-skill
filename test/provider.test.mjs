@@ -29,7 +29,7 @@ test('list() returns one catalog entry built from SKILL.md', async () => {
   assert.equal(entry.rank, 600)
   assert.deepEqual(entry.invocation, { modelInvocable: true, userInvocable: true })
   assert.ok(entry.description.length > 0)
-  assert.ok(entry.whenToUse)
+  assert.match(entry.description, /staged work/)
   assert.match(entry.path, /SKILL\.md$/)
 })
 
@@ -37,7 +37,7 @@ test('get() returns the body without the frontmatter', async () => {
   const skill = await register().get()
   assert.equal(skill.name, 'iteron-skill')
   assert.match(skill.content, /^\s*# Iteron/)
-  assert.ok(!skill.content.includes('whenToUse:'))
+  assert.ok(!skill.content.includes('description:'))
 })
 
 test('resourceBase points at the package directory', async () => {

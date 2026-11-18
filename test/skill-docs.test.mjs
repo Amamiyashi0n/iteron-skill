@@ -22,15 +22,11 @@ test('rejects missing frontmatter and required fields', () => {
   assert.throws(() => parseSkillFile('---\nname: a\n---\n'), /needs name and description/)
 })
 
-test('whenToUse is passed through to the catalog', () => {
-  assert.equal(parseSkillFile('---\nname: a\ndescription: b\nwhenToUse: c\n---\n').fields.whenToUse, 'c')
-})
-
-test('the shipped SKILL.md parses and declares when to use it', () => {
+test('the shipped SKILL.md uses portable Agent Skills metadata', () => {
   const { fields, body } = parseSkillFile(readFileSync(join(ROOT, 'SKILL.md'), 'utf8'))
   assert.equal(fields.name, 'iteron-skill')
-  assert.ok(fields.description.length > 0)
-  assert.ok(fields.whenToUse, 'SKILL.md should declare whenToUse')
+  assert.deepEqual(Object.keys(fields).sort(), ['description', 'name'])
+  assert.match(fields.description, /staged work/)
   assert.match(body, /^\s*# Iteron/)
 })
 

@@ -1,8 +1,31 @@
 # Iteron
 
-Iteron 是 DeepSeek Harness 的技能插件，适合能拆成多个可独立验收阶段、需要跨会话续做的任务。它把计划、验收证据和下一步留在项目里，让新的会话可以接着上一次的发现继续工作。
+Iteron 是一个可供 Claude Code、Codex 和 DeepSeek Harness 使用的 Agent Skill，适合能拆成多个可独立验收阶段、需要跨会话续做的任务。它把计划、验收证据和下一步留在项目里，让新的会话可以接着上一次的发现继续工作。
 
 ## 安装
+
+### Claude Code、Codex 和其他 Agent
+
+把本仓库克隆到对应的技能目录。也可以在 `iteron-skill` 目录中只复制 `SKILL.md`、`references/`、`templates/` 和 `scripts/`，保留这些文件和目录的相对位置。运行记录校验器时需要 Node.js 20 或更高版本。
+
+| Agent | 用户级目录 | 项目级目录 | 调用方式 |
+| --- | --- | --- | --- |
+| Claude Code | `~/.claude/skills/iteron-skill/` | `.claude/skills/iteron-skill/` | `/iteron-skill` |
+| Codex | `~/.agents/skills/iteron-skill/` | `.agents/skills/iteron-skill/` | `$iteron-skill` |
+
+例如，在目标项目根目录运行下列对应命令，然后开启新会话。
+
+```sh
+# Claude Code
+git clone https://github.com/Amamiyashi0n/iteron-skill.git .claude/skills/iteron-skill
+
+# Codex
+git clone https://github.com/Amamiyashi0n/iteron-skill.git .agents/skills/iteron-skill
+```
+
+其他兼容 Agent Skills 格式的工具，可将同一份 `iteron-skill/` 放进该工具的技能目录。项目任务记录仍写入目标项目的 `agent.md` 和 `.agent/`。
+
+### DeepSeek Harness
 
 1. 将本仓库克隆到 DeepSeek Harness 所在的机器。
 2. 在 DeepSeek Harness 打开 **Plugins → Add plugin**，选择克隆后的仓库根目录，也就是包含 `package.json` 和 `cordis.patch.yml` 的目录。

@@ -51,7 +51,6 @@ function skillMetadata(fields) {
   return {
     name: fields.name,
     description: fields.description,
-    ...(fields.whenToUse ? { whenToUse: fields.whenToUse } : {}),
     invocation: { modelInvocable: true, userInvocable: true },
     provider: name,
     source: 'bundled',
