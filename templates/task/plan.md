@@ -12,15 +12,12 @@
 - overall_acceptance:
   - O-1: {{overall_criterion}}
 - overall_acceptance_ref: -
-- open_assumptions: {{open_assumptions}}
-- records: [Stage records](stages/records.md) / [Distillation](distillation/notes.md)
 
 ## Resume Point
 
 - confirmed: {{confirmed}}
 - pending_checks: {{pending_checks}}
 - next_action: {{next_action}}
-- delegated: None.
 
 ## Current Plan
 

@@ -6,28 +6,28 @@ whenToUse: Use when the work splits into at least two independently verifiable i
 
 # Iteron
 
-Use Iteron for work that benefits from separate, verifiable stages. Handle ordinary questions and one-step changes directly. Use the project's existing tools to do and verify the work, and use Git for version history and rollback.
+Use the task index to find work and the task plan to resume it. Each plan item describes a deliverable and its acceptance criteria. Each verification attempt records what was actually checked.
 
-## Relation to other DSH features
+## Plan or resume
 
-- **`plan.md` is the source of truth.** Use the session progress tracker (`todo_write` in DSH) to show progress within the current session, but maintain the authoritative plan and resume point in `plan.md`. When exiting planning or read-only mode, write the plan to `plan.md` immediately.
-- **Use with goals.** Long-running tasks can pair with the goal tool (`create_goal` in DSH) to survive session interruptions. The goal tracks the high-level objective, while Iteron records verify each stage.
-- **Planning mode is for design.** Use DSH's planning mode to draft the initial plan in conversation, then write it to `plan.md` before starting execution.
+Find the task in `agent.md`, or register a new task using the [templates](templates/README.md). For the first task, add the [discovery pointer](references/task-record.md#discovery-pointer). In planning mode, draft the plan in conversation and save it when writes are allowed.
 
-## Main workflow
+Keep the current plan and next action in `plan.md`. When the goal is an improvement, identify the starting observation and what outcome would count as enough. On resumption, read the last attempt for the next item so the new session can use what the previous one learned. Claim the task before writing, following the [task lifecycle](references/task-record.md#task-lifecycle) and [ownership rules](references/task-record.md#ownership).
 
-1. **Plan or resume.**
-   - New task: identify the deliverable and acceptance criteria, and split the work into independently verifiable items.
-   - Create `plan.md` from the [templates](templates/README.md) and register the task in `agent.md`. For the first task in a repository, add the [discovery pointer](references/task-record.md#discovery-pointer).
-   - Resuming: open the existing plan and confirm the goal and resume point.
-   - Claim the task in `owner` before writing. If another owner is recorded, read only and ask the user before taking over ([Ownership](references/task-record.md#ownership)).
-   - Use the [record rules](references/task-record.md) for naming, numbering, and search, and create files and blocks from the [template files](templates/README.md).
-   - In planning or read-only mode, keep the plan in the conversation.
-2. **Do and verify one item.** Pick an item whose prerequisites are met. Apply a distilled method if it fits, then verify the result using the project's tools, and record the `revision` that was checked. Reuse evidence only after comparing its recorded revision with the current state, as [Evidence freshness](references/task-record.md#evidence-freshness) describes.
-3. **Record the result and continue.** Write the actual delivery and verification in `stages/records.md`. Fill in the plan item's `acceptance_ref` before marking it complete. Distill a method into `distillation/notes.md` only when a verified route can help with similar work. Record actual use in the downstream stage. Update the resume point when the state changes materially or work is handed off. A delegated item returns its Verification Block to the owner, who writes it.
-4. **Verify the overall result and deliver.** Write the `overall` stage described in [Overall verification](references/task-record.md#overall-verification): one Verification Block per overall criterion, reusing only fresh evidence and checking the rest now. Once every criterion passes, close the task: set the plan's `status`, `overall_acceptance_ref`, `owner`, and resume point, update the index, and report the result, verification, and record location. Before reporting, run the [record checker](scripts/check-records.mjs) with `node <skill directory>/scripts/check-records.mjs <repo root>` when Node 20 or later is available, and fix every error it reports.
+## Work and verify
 
-## Changes and blockers
+Choose a ready item, do the work, and check its acceptance criteria with project tools. Append the result to `stages/records.md` and link the item’s own passing attempt from `acceptance_ref`. Record the tested inputs as described under [evidence freshness](references/task-record.md#evidence-freshness).
 
-- **Replan when needed.** Pause affected actions and update the current plan in the same file. Check which verification evidence and distilled methods still apply and what needs to be verified again. Continue with ready items. For splits, merges, downstream feedback, or dependency cycles, see [Complex replanning](references/task-record.md#complex-replanning).
-- **Handle blockers.** Fix recoverable implementation problems and verify again. When a prerequisite is missing, save confirmed progress and the conditions for resuming, and continue independent work. When the prerequisite arrives, verify its source, target, and scope, then resume from the next ready action. If the task remains blocked, report the unfinished work and what would unblock it.
+Use the result to choose the next action. Complete the item once its acceptance criteria pass. A failure with a known cause calls for a fix and another check against the same criterion. If the cause is unclear, choose a small check whose possible results would lead to different fixes. Record what it revealed in `observed` and put the resulting action in the resume point. If a check cannot run, record what would make it possible and continue ready work.
+
+Keep the item and plan version for another attempt at the same deliverable. Replan when the evidence changes what must be delivered, its dependencies, or how success is defined.
+
+When a verified approach could help another task, record when it applies, how to use it and how to check the outcome. On reuse, record what happened in the downstream attempt. If it reveals a new limit or a better check, [update the original method](references/task-record.md#feedback-from-reuse) with that evidence.
+
+## Close
+
+Check each overall criterion against the final deliverable. Link applicable evidence, run the remaining checks, and record the [overall verification](references/task-record.md#overall-verification).
+
+Once the criteria pass, the session closing the task writes the [closure fields](references/task-record.md#closing-a-task) and runs the [single-task check](scripts/check-records.mjs) with Node 20 or later: `node <skill-dir>/scripts/check-records.mjs <repo-root> <task_id>`. That session corrects record errors and reruns the check. Review any newer attempt that conflicts with the cited evidence. If the deliverable falls short, reopen the affected item and verify the fix. Report completion once the deliverable meets the criteria and the final records pass the check.
+
+Tell the user what was delivered and how it was verified. If an observation changed the approach, briefly connect the starting result, that finding and the final outcome. Link a distilled method when it will help the reader repeat the work.

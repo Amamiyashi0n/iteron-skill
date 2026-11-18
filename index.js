@@ -9,7 +9,7 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-const PROVIDER_NAME = 'iteron-skill'
+export const name = 'iteron-skill'
 // Same rank as other bundled skills (BUNDLED_SKILL_RANK in @deepseek-ai/dsh-skill).
 const BUNDLED_SKILL_RANK = 600
 const SKILL_URL = new URL('./SKILL.md', import.meta.url)
@@ -25,17 +25,17 @@ export function parseSkillFile(text) {
   if (!match) throw new Error('SKILL.md is missing YAML frontmatter')
   const fields = {}
   for (const line of match[1].split(/\r?\n/)) {
-    const m = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line)
-    if (!m) {
+    const field = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line)
+    if (!field) {
       if (/^\s+\S/.test(line)) throw new Error('SKILL.md frontmatter: indented continuation lines are not supported')
       continue
     }
-    let value = m[2].trim()
+    let value = field[2].trim()
     if (/^[>|][+-]?$/.test(value)) {
-      throw new Error(`SKILL.md frontmatter: ${m[1]} uses a block scalar; write the value on one line`)
+      throw new Error(`SKILL.md frontmatter: ${field[1]} uses a block scalar; write the value on one line`)
     }
     if (/^(['"]).*\1$/.test(value)) value = value.slice(1, -1)
-    fields[m[1]] = value
+    fields[field[1]] = value
   }
   if (!fields.name || !fields.description) {
     throw new Error('SKILL.md frontmatter needs name and description')
@@ -47,13 +47,13 @@ async function loadSkill() {
   return parseSkillFile(await readFile(SKILL_URL, 'utf8'))
 }
 
-function summaryOf(fields) {
+function skillMetadata(fields) {
   return {
     name: fields.name,
     description: fields.description,
     ...(fields.whenToUse ? { whenToUse: fields.whenToUse } : {}),
     invocation: { modelInvocable: true, userInvocable: true },
-    provider: PROVIDER_NAME,
+    provider: name,
     source: 'bundled',
     path: SKILL_PATH,
     resourceBase: RESOURCE_BASE,
@@ -61,19 +61,17 @@ function summaryOf(fields) {
 }
 
 const provider = {
-  name: PROVIDER_NAME,
+  name: name,
   async list() {
     const { fields } = await loadSkill()
-    return [{ ...summaryOf(fields), rank: BUNDLED_SKILL_RANK, locator: SKILL_URL }]
+    return [{ ...skillMetadata(fields), rank: BUNDLED_SKILL_RANK, locator: SKILL_URL }]
   },
   async get() {
     const { fields, body } = await loadSkill()
-    return { ...summaryOf(fields), content: body }
+    return { ...skillMetadata(fields), content: body }
   },
 }
 
-/** Cordis plugin name. */
-export const name = 'iteron-skill'
 /** Service required by the provider. */
 export const inject = ['skills']
 

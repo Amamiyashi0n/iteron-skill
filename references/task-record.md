@@ -2,13 +2,13 @@
 
 ## Text format
 
-Write index entries and all task records in English, even when the request is in another language. Use the headings, table columns, and lowercase field names below. Put one field on each line. Keep exact file names, field names, IDs, and links searchable. Summarize long evidence and link to its source. A stage or distilled method runs from its heading to the next heading at the same level. Read its status, applicability, and evidence together.
+Use the project’s working language for descriptions. Use the headings, table columns, and lowercase field names below. Put one field on each line. Keep exact file names, field names, IDs, and links searchable. Summarize long evidence and link to its source. A stage or distilled method runs from its heading to the next heading at the same level. Read its status, applicability, and evidence together.
 
 **Never write credentials or secrets** in `observed`, `evidence`, or any other field. Reference them by name or redact them. If evidence requires a secret value, link to a secured location outside the repository.
 
 Keep records at the repository root, or at the target working directory if there is no repository. Use one row per task in `agent.md`. Its fixed link points to `.agent/<Task ID>-plan/plan.md`. Set the Task ID from the UTC creation time in `yyyy-MM-dd_HH-mm-ss` format, such as `2026-01-15_08-30-12`. For collisions, add `-2`, `-3`, and so on. Use the same time format for `plan_timestamp`, which identifies the current plan version. Preserve unrelated content when updating the index.
 
-**Version control**: Decide whether to commit `.agent/` to Git or add it to `.gitignore`. Committing it preserves history and enables team collaboration; excluding it keeps records local to the working copy. Document the choice in the repository's README or AGENTS.md.
+**Version control**: Decide whether to commit `.agent/` to Git or add it to `.gitignore`. Committing it preserves history and enables team collaboration; excluding it keeps records local to the working copy. Follow the repository’s existing convention for local task notes.
 
 ```markdown
 # Task Index
@@ -74,15 +74,13 @@ rg -ni --hidden --no-ignore -g '**/distillation/notes.md' -F -- 'raw_amount' .ag
   - O-1: Row count and order match the feed.
   - O-2: All amounts match the independent reference.
 - overall_acceptance_ref: -
-- open_assumptions: None.
 - records: [Stage records](stages/records.md) / [Distillation](distillation/notes.md)
 
 ## Resume Point
 
-- confirmed: `T-001` verified the conversion for the current feed.
-- pending_checks: The export has not yet been generated.
-- next_action: Complete `T-002` using the conversion verified by `T-001`.
-- delegated: None.
+- confirmed: Both plan items passed.
+- pending_checks: Verify the final export against the reference.
+- next_action: Run overall verification on the exported file.
 
 ## Current Plan
 
@@ -94,13 +92,26 @@ rg -ni --hidden --no-ignore -g '**/distillation/notes.md' -F -- 'raw_amount' .ag
 
 Use `pending`, `in_progress`, `blocked`, or `completed` for index and plan statuses. The plan's `status` field is the task status, and the index row repeats it; when they disagree, the plan wins and the index is repaired. Order items by dependencies and priority. Assign increasing IDs starting at `T-001`, with at least three digits and leading zeros as needed. `next_item_number` is the next unassigned number. Keep it when resuming or replanning. Removed IDs stay retired. Use `pending_checks` for unconfirmed actions, checks, or blockers, with a place to look or a condition for resuming.
 
-A task is `blocked` when at least one plan item is `blocked` and no other items can proceed independently. Set an item to `blocked` after three consecutive failed verification attempts, or when it waits for an external prerequisite that is not yet available. Record the blocking condition in `pending_checks`. The task remains `blocked` until the condition is resolved or the plan is changed to work around it.
+### Task lifecycle
 
-A task closes only through the overall verification stage described under [Overall verification](#overall-verification). On closure, in the same edit, set `status: completed`, point `overall_acceptance_ref` at that stage, set `owner: none`, write `next_action: completed`, and update the index row.
+| Event | What to do |
+| --- | --- |
+| The work is planned | Start the task and its items as `pending`. When work begins, mark the task and the chosen ready item `in_progress`. |
+| An attempt yields evidence | Compare the observation with the item's acceptance criteria. On a pass, link the attempt and complete the item. With a useful next experiment or fix, keep it `in_progress` and update `next_action`. |
+| An item cannot advance | Mark the item `blocked` and save the missing input or condition in `pending_checks`. Continue independent items. Mark the task `blocked` only when none can proceed. |
+| Work resumes or changes hands | Save the latest finding and next action on handoff and release the owner. On return, claim the task, check the saved prerequisite or evidence, and set resumed work to `in_progress`. A handoff alone leaves the task status intact. |
+| All items pass | Keep the task `in_progress` through overall verification. A gap in the final deliverable sends the affected item back to work. Follow [Closing a task](#closing-a-task) once the criteria pass. |
+| Feedback arrives after delivery | If it shows that an agreed criterion was missed, reopen the affected work under the original task and verify it again. If the user requests a new outcome, start a new task and refer back to the completed one when its evidence helps. |
+
+### Closing a task
+
+After [overall verification](#overall-verification) passes, set `status: completed`, link `overall_acceptance_ref` to the passing stage, set `owner: none` and `next_action: completed`, and update the index row. The single-task checker reads these saved values to validate closure.
+
+The session that writes those fields remains responsible for record corrections through the final check, including while the saved owner is `none`. For a record error such as a broken link to a passing check, correct the record and rerun the checker. If the deliverable fails a criterion, reclaim the task, reopen the affected item, update the task and index status, clear `overall_acceptance_ref`, and record the next action. Verify the corrected delivery in a new overall attempt before closing again.
 
 ### Ownership
 
-`owner` names the one session or agent allowed to write this task's records, and when it claimed them. Use whatever identifies the writer to the user, such as a session ID or an agent name. Record the claim time in UTC using the same `yyyy-MM-dd_HH-mm-ss` format as task IDs. Claim the task before the first write: when starting it, or when resuming a task whose `owner` is `none`. Release it with `owner: none` on handoff, on closure, or when stopping with work left.
+`owner` identifies the writer of an open task and when it claimed the task. Use a session ID or agent name and a UTC claim time in `yyyy-MM-dd_HH-mm-ss` format. Claim the task when starting or resuming work. Set `owner: none` on handoff or when stopping with work left. For the final write and any record corrections, follow [Closing a task](#closing-a-task).
 
 - **Another owner is recorded.** Do not write records. Reading them is fine. The other session may still be running, and its liveness cannot be checked from the files. Ask the user whether to take over. When taking over, record the previous owner and the reason in `pending_checks`, re-read the plan, and confirm the resume point before acting.
 - **Write against the current file.** Re-read `plan.md` or `stages/records.md` immediately before editing it. If its content changed since you last read it and you did not make the change, stop and reconcile before writing.
@@ -110,9 +121,9 @@ A task closes only through the overall verification stage described under [Overa
 
 Identify a stage by `Plan Timestamp / Plan Item ID / Attempt Number`. Each verification of an item is a separate stage, numbered starting from 1. Give each stage an anchor and point `acceptance_ref` to the latest successful attempt. Record the criteria actually checked in the Verification Block.
 
-A failed verification is still recorded as a stage, with `result: fail` or `result: unverified`. When fixing the problem and verifying again, increment the attempt number. The plan item's `acceptance_ref` always points to the most recent `pass` result.
+A failed verification is still recorded as a stage, with `result: fail` or `result: unverified`. When fixing the problem and verifying again, increment the attempt number. Keep the most recent passing attempt in `acceptance_ref`. If the latest attempt under that plan version fails or is unverified, review what changed before relying on the earlier result. Reopen the item when the evidence no longer supports completion.
 
-**Retry limit**: After three consecutive failed attempts for the same item under the same plan version, set the item's status to `blocked` and record the failure pattern in `pending_checks`. Either replan to work around the problem, or ask the user for guidance before attempting a fourth verification.
+For improvement work, use an existing observation as the baseline, or measure it before changing the relevant inputs. Compare attempts on the same case using the same acceptance check. A useful result can be qualitative, such as locating the point where a record disappears. If a change makes no difference, use that finding to rule out a cause or try a different approach. When no useful check is possible, record what would unblock the item. Stop iterating once the agreed criteria pass.
 
 ```markdown
 # Stage Records
@@ -133,10 +144,9 @@ A failed verification is still recorded as a stage, with `result: fail` or `resu
 - method: Match rows by id, derive a candidate ratio from a nonzero sample, and compare every converted value.
 - result: pass
 - observed: 3 of 3 rows matched. A raw value of 1250 corresponds to 1.250.
-- evidence_status: current
 ```
 
-**Example: Failed verification followed by success**
+**Example: Use a failed check to pick the next change**
 
 ```markdown
 <a name="stage-2026-01-15_08-31-00-t-002-1"></a>
@@ -152,14 +162,13 @@ A failed verification is still recorded as a stage, with `result: fail` or `resu
 - revision: `b2c3d4e`, clean working tree
 - method: Compare line counts and the id sequences.
 - result: fail
-- observed: Output has 2 rows; feed.csv has 3. Row id=103 is missing.
-- evidence_status: current
+- observed: Only 2 of 3 rows were exported. ID 103 is present after parsing with amount 0 and missing after filtering.
 
 <a name="stage-2026-01-15_08-31-00-t-002-2"></a>
 
 ## 2026-01-15_08-31-00 / T-002 / 2
 
-- delivery: Regenerated `amounts.jsonl` after fixing the filter bug.
+- delivery: Changed the filter to omit missing amounts and retain zero, then regenerated the export from the same feed.
 
 ### Verification Block
 
@@ -168,8 +177,7 @@ A failed verification is still recorded as a stage, with `result: fail` or `resu
 - revision: `c3d4e5f`, clean working tree
 - method: Compare line counts and the id sequences.
 - result: pass
-- observed: 3 rows in both files, in the same order.
-- evidence_status: current
+- observed: The export now contains all 3 IDs in feed order, including ID 103 with amount 0.
 ```
 
 The plan item's `acceptance_ref` points to the second stage: `[2026-01-15_08-31-00 / T-002 / 2](#stage-2026-01-15_08-31-00-t-002-2)`.
@@ -179,11 +187,11 @@ The plan item's `acceptance_ref` points to the second stage: `[2026-01-15_08-31-
 
 `revision` records the exact state that was checked, so a later session can tell whether the evidence still applies. Record it when the check runs, not afterwards.
 
-- **Inside Git.** Record the short commit SHA from `git rev-parse --short HEAD`. If `git status --porcelain` lists changes to any file the check depends on, add the working-tree state: commit or stash first when the user allows it; otherwise write `dirty:` followed by the changed paths that matter, and add a content hash for each.
-- **Outside Git or for external inputs.** Record a SHA-256 of each tested file, or a version, timestamp, or query that identifies the input exactly. Write the first and last few hex characters when the full hash is long, and keep the full value in linked evidence.
-- **Nothing identifiable.** Write `revision: none` and say why in `subject`. Such evidence cannot be reused in a later session and must be rechecked.
+- For committed inputs, record the commit that was tested. Before reuse, compare the relevant paths against that commit and check for relevant untracked inputs.
+- For modified or untracked inputs, record their paths and content hashes at verification time. Compare those hashes with the current files before reuse, including when the working tree is now clean. A commit comparison alone cannot identify the bytes tested in a dirty tree.
+- For external inputs, record a content hash or a stable version identifying the tested input. If you cannot identify it, write `revision: none` and rerun the check when its evidence is needed again.
 
-Before reusing evidence, compare its recorded state with the current one: `git diff --stat <revision> -- <paths the check depends on>` inside Git, or recompute the recorded hashes. Reuse it only when the paths it depends on and its external inputs are unchanged, and name the comparison you ran in the downstream stage. If they changed, set `evidence_status: historical`, record which change invalidated it, and verify again under a new Verification Block.
+Reuse passing item evidence only while its checked inputs and acceptance conditions still match. Record the comparison alongside the link. When evidence becomes stale, add `evidence_status: historical` to its Verification Block and verify the changed inputs again.
 
 When a distilled method is used, add `applied_distillation` to the downstream stage, link to the method, and state which implementation or check it affected. Use `pass`, `fail`, or `unverified` for `result`. Put actual findings in `observed`. Use `subject` to identify what was tested and the assumptions that affect the result. Add `evidence` when a log, report, or artifact can be linked. Use `resume_when` for blockers. When evidence becomes invalid, follow [Evidence freshness](#evidence-freshness).
 
@@ -209,20 +217,7 @@ For `evidence_impact`, link the actual check and identify what must be reverifie
 
 ## Overall verification
 
-Close a task with one overall stage identified as `Plan Timestamp / overall / Attempt Number`, using the current plan version. Write it after every plan item is `completed`. Number the overall criteria `O-1`, `O-2`, and so on in `plan.md`, and check each one in its own Verification Block whose `criteria` line starts with that number. Cite an item's stage in a `reused` line when its evidence covers the criterion and passes the freshness comparison above, naming the comparison; otherwise run the check now. Every check run in this stage needs a `revision`.
-
-Each overall verification is a separate stage with its own attempt number, starting from 1. If the overall verification fails, reopen or add the needed plan items, verify them, then write a new overall stage with an incremented attempt number.
-
-### How to verify overall criteria
-
-Before writing the overall stage, systematically check each O-N criterion:
-
-1. **Identify what to check**: Translate the criterion into concrete checks (file exists, pattern matches, test passes, counts agree, specific content present)
-2. **Determine the method**: Decide whether to reuse item evidence (when it covers this criterion and passes the freshness check) or run a new check
-3. **Run the check**: Execute it and record exactly what was observed, including the revision
-4. **Document the result**: Write the Verification Block immediately with the observed result
-
-Use a checklist or verification script when there are multiple criteria. This prevents skipping criteria or judging by assumption. Failed checks stay explicit: write the `fail` block, reopen or add the needed plan items, then run overall verification again with an incremented attempt number after those items pass.
+After all items are complete, verify the final deliverable against the numbered overall criteria in the current plan. For a criterion already covered by a passing item attempt, record one line with its criterion ID, source link and freshness comparison. For a new check, use a Verification Block with its result and revision.
 
 ```markdown
 <a name="stage-2026-01-15_08-31-00-overall-1"></a>
@@ -233,23 +228,17 @@ Use a checklist or verification script when there are multiple criteria. This pr
 
 ### Verification Block
 
-- criteria: O-1 Row count and order match the feed.
-- subject: `amounts.jsonl` against this batch's `feed.csv`.
+- criteria: O-2 Exported amounts match the independent reference.
+- subject: Final `amounts.jsonl` and the reference amounts for this batch.
 - revision: `e4f5a6b`, clean working tree
-- method: Compare the id sequences line by line.
+- method: Compare the amount for each exported ID with its reference value.
 - result: pass
-- observed: 3 rows in both files, in the same order.
-- evidence_status: current
+- observed: All three exported amounts matched.
 
-### Verification Block
-
-- criteria: O-2 All amounts match the independent reference.
-- reused: [`2026-01-15_08-31-00 / T-002 / 2`](#stage-2026-01-15_08-31-00-t-002-2); `git diff --stat c7d8e9f e4f5a6b -- amounts.jsonl feed.csv` reports no changes.
-- result: pass
-- evidence_status: current
+- O-1: [Export row count and order](#stage-2026-01-15_08-31-00-t-002-2) — checked inputs are tracked and unchanged from `c3d4e5f` to `e4f5a6b`.
 ```
 
-Close the task only when every criterion has a `pass` block in this stage. A `fail` or `unverified` result keeps the task open: add or reopen the plan items it needs, then write a new overall stage after they pass. If the plan changes after an overall stage is written, that stage is `historical`, and the closure needs a new overall stage under the new `plan_timestamp`.
+Close the task only when every criterion has passing evidence in this stage. A `fail` or `unverified` result keeps the task open: add or reopen the plan items it needs, then write a new overall stage after they pass. If the plan changes after an overall stage is written, that stage is `historical`, and the closure needs a new overall stage under the new `plan_timestamp`.
 
 ## Complex replanning
 
@@ -259,7 +248,7 @@ Close the task only when every criterion has a `pass` block in this stage. A `fa
 
 ## `distillation/notes.md`
 
-Distillation extracts a reusable execution method from verified work. Identify each method by `Plan Timestamp / Item ID / M-N`, where N starts from 1 for the first method distilled from that item. Give each method an anchor and a `title` field that describes the situation and problem. Use `route` for actionable steps, `check` for the condition that must pass, and `source` for the verified stage. `applies_when` and `search_terms` are required.
+Distillation extracts a reusable execution method from verified work. Identify each method by `Plan Timestamp / Item ID / M-N`, where N starts from 1 for the first method distilled from that item. Give each method an anchor and a `title` field that describes the situation and problem. Use `route` for actionable steps, `check` for the condition that must pass, and `source` for a link to the passing attempt for the item and plan version in the method heading. When a failed attempt helped identify the cause, cite it in `rationale` and use the attempt that verified the solution as `source`. `applies_when` and `search_terms` are required.
 
 Before adopting a method, confirm `status: active`, valid source evidence, and that `applies_when` matches. If any of these are uncertain, verify before using it. Record actual use in the downstream stage's `applied_distillation` field. Add `rationale` when a tradeoff changes execution. Keep one-off values in the source evidence and delivery-specific requirements, such as output order, in the current plan. If a method no longer applies, set its status to `historical`, record the `reason`, and retain its `source`.
 
@@ -281,3 +270,9 @@ Before adopting a method, confirm `status: active`, valid source evidence, and t
 - source: [2026-01-15_08-31-00 / T-001 / 1](../stages/records.md#stage-2026-01-15_08-31-00-t-001-1)
 - search_terms: amount conversion, raw_amount, feed.csv
 ```
+
+### Feedback from reuse
+
+If a method works as written, the downstream stage’s `applied_distillation` and verification result are enough. When a new case changes the advice, edit the original note’s `applies_when` or `check` and link the downstream attempt beside the change. Keep the originating `source` intact. For example, if a feed repeats IDs for different currencies, narrow “match rows by ID” to feeds with unique IDs. Recommend a replacement matching key once an attempt verifies it.
+
+For feedback across tasks, use a relative link from the method note to the downstream observation. An update to a completed task’s method note leaves its delivery closed. If another session owns the source task, record the proposed wording and observation in the downstream attempt for that owner to apply.
