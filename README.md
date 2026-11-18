@@ -6,24 +6,20 @@ Iteron 是一个可供 Claude Code、Codex 和 DeepSeek Harness 使用的 Agent 
 
 ### Claude Code、Codex 和其他 Agent
 
-把本仓库克隆到对应的技能目录。也可以在 `iteron-skill` 目录中只复制 `SKILL.md`、`references/`、`templates/` 和 `scripts/`，保留这些文件和目录的相对位置。运行记录校验器时需要 Node.js 20 或更高版本。
+在目标项目根目录运行以下命令，用 [Vercel Skills CLI](https://github.com/vercel-labs/skills) 为 Claude Code 和 Codex 安装 Iteron。
+
+```sh
+npx skills add Amamiyashi0n/iteron-skill --skill iteron-skill -a claude-code -a codex
+```
+
+只用一个 Agent 时保留对应的 `-a` 参数。加 `-g` 可安装到用户目录，供多个项目使用。其他受支持的 Agent 可指定其 [安装器标识](https://github.com/vercel-labs/skills/blob/main/docs/agents.md)。安装后开启新会话。
 
 | Agent | 用户级目录 | 项目级目录 | 调用方式 |
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/skills/iteron-skill/` | `.claude/skills/iteron-skill/` | `/iteron-skill` |
 | Codex | `~/.agents/skills/iteron-skill/` | `.agents/skills/iteron-skill/` | `$iteron-skill` |
 
-例如，在目标项目根目录运行下列对应命令，然后开启新会话。
-
-```sh
-# Claude Code
-git clone https://github.com/Amamiyashi0n/iteron-skill.git .claude/skills/iteron-skill
-
-# Codex
-git clone https://github.com/Amamiyashi0n/iteron-skill.git .agents/skills/iteron-skill
-```
-
-其他兼容 Agent Skills 格式的工具，可将同一份 `iteron-skill/` 放进该工具的技能目录。项目任务记录仍写入目标项目的 `agent.md` 和 `.agent/`。
+也可以手动将 `SKILL.md`、`references/`、`templates/` 和 `scripts/` 放进对应的 `iteron-skill/` 目录，保留相对路径。项目任务记录仍写入目标项目的 `agent.md` 和 `.agent/`，运行记录校验器需要 Node.js 20 或更高版本。
 
 ### DeepSeek Harness
 
