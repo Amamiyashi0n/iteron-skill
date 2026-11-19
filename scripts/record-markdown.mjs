@@ -7,6 +7,12 @@ export function readLines(path) {
   return readFileSync(path, 'utf8').replace(/\r\n/g, '\n').split('\n')
 }
 
+export function readMarkdownLink(text = '') {
+  const match = /\[[^\]]*\]\(([^#)]*)(?:#([^\s)]+))?\)/.exec(text)
+  if (!match) return undefined
+  return { path: match[1], anchor: match[2] }
+}
+
 /** Cells of the table whose header row starts with `| firstColumn |`. */
 export function parseTable(lines, firstColumn) {
   const start = lines.findIndex((line) => line.startsWith(`| ${firstColumn} |`))

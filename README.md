@@ -48,6 +48,8 @@ npx skills add Amamiyashi0n/iteron-skill --skill iteron-skill -a claude-code -a 
 
 工作流见 [SKILL.md](SKILL.md)，记录格式和完整示例见 [任务记录规范](references/task-record.md)，可复制的文件见 [模板](templates/README.md)。
 
+新任务统一写到 `.agent/`。已有任务如果放在 `agent/`，可以直接查找、续做和校验，索引链接使用实际路径。
+
 ## 校验与开发
 
 在插件仓库目录下运行，需要 Node.js 20 或更高版本。

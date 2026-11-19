@@ -2,6 +2,8 @@
 
 Copy these files when creating Iteron records. Each template carries only the structure; the rules for every field are in [task-record.md](../references/task-record.md).
 
+The paths below are for new tasks. For a task already stored under `agent/`, keep its files there and use that path in its index link.
+
 ## Files
 
 | Template | Copy to | When |

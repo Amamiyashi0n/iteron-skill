@@ -1,7 +1,7 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
-import { readLines, parseTable, checkColumns, parseFields, parseRecordSections, readAnchors } from './record-markdown.mjs'
-import { ITEM_ID, LINK_TO_STAGE, readVerificationRecords, hasCurrentPass, itemAttemptPassed, latestItemAttempt } from './verification-records.mjs'
+import { readLines, parseTable, checkColumns, parseFields, parseRecordSections, readAnchors, readMarkdownLink } from './record-markdown.mjs'
+import { ITEM_ID, readVerificationRecords, hasCurrentPass, itemAttemptPassed, latestAttempt } from './verification-records.mjs'
 
 const TASK_ID = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?$/
 const CREDENTIAL_ASSIGNMENT = /\b(?:password|passwd|secret|token|api[_-]?key)\b["'`]?\s*[:=]\s*(\S.*)$/i
@@ -14,6 +14,15 @@ const PLAN_COLUMNS = ['item_id', 'requirement', 'expected_result', 'depends_on',
 
 const plainText = (value = '') => value.replace(/`/g, '').trim()
 const criterionId = (block) => /^(O-\d+)\b/.exec(block.get('criteria') ?? '')?.[1]
+
+function linksToFile(link, fromDir, path) {
+  return Boolean(link?.path) && relative(path, resolve(fromDir, link.path)) === ''
+}
+
+function overallCriterionPassed(attempt, criterion) {
+  const checks = attempt.blocks.filter(block => criterionId(block) === criterion)
+  return checks.length > 0 && checks.every(hasCurrentPass)
+}
 
 function markdownFiles(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -53,30 +62,33 @@ function checkMethods(path, location, records, report) {
     if (status === 'historical' && !fields.get('reason')) report('error', 'method-reason', location, `${section.heading} is historical but has no reason`)
     const source = fields.get('source')
     if (!source) continue // Covered by the required-field check above.
-    const link = /\[[^\]]*\]\(([^#)]+)#(stage-[^)\s]+)\)/.exec(source)
+    const link = readMarkdownLink(source)
     const notesDir = dirname(path)
-    if (!link || resolve(notesDir, link[1]) !== resolve(notesDir, '../stages/records.md') || !records.has(link[2])) {
+    if (!linksToFile(link, notesDir, join(notesDir, '../stages/records.md')) || !records.has(link.anchor)) {
       report('error', 'method-source-broken', location, `${section.heading}: source must link to an attempt in this task's stages/records.md`)
       continue
     }
-    const attempt = records.get(link[2])
+    const attempt = records.get(link.anchor)
     if (status === 'active' && (attempt.itemId !== item || attempt.planTimestamp !== section.planTimestamp || !itemAttemptPassed(attempt))) {
       report('error', 'method-source-not-verified', location, `${section.heading}: an active method needs a current passing attempt for its plan item`)
     }
   }
 }
 
-function checkItemEvidence(itemId, reference, records, planTimestamp, location, report) {
-  const link = LINK_TO_STAGE.exec(reference ?? '')
-  if (!link) return report('error', 'acceptance-ref-missing', location, `${itemId} has no verification attempt link`)
-  const attempt = records.get(link[1])
-  if (!attempt) return report('error', 'acceptance-ref-broken', location, `${itemId} cites missing record ${link[1]}`)
+function checkItemEvidence(itemId, reference, records, planTimestamp, planPath, location, report) {
+  const link = readMarkdownLink(reference)
+  if (!link?.anchor) return report('error', 'acceptance-ref-missing', location, `${itemId} has no verification attempt link`)
+  const attempt = records.get(link.anchor)
+  const planDir = dirname(planPath)
+  if (!linksToFile(link, planDir, join(planDir, 'stages/records.md')) || !attempt) {
+    return report('error', 'acceptance-ref-broken', location, `${itemId} must link to an existing attempt in its stages/records.md`)
+  }
   if (attempt.kind !== 'item' || attempt.itemId !== itemId) {
     return report('error', 'acceptance-ref-wrong-item', location, `${itemId} must cite its own verification attempt`)
   }
   if (!itemAttemptPassed(attempt)) report('error', 'acceptance-ref-not-pass', location, `${itemId} needs current passing evidence`)
   if (attempt.planTimestamp !== planTimestamp) report('warning', 'acceptance-ref-old-plan', location, `${itemId} cites plan ${attempt.planTimestamp}`)
-  const latest = latestItemAttempt(records, attempt)
+  const latest = latestAttempt(records, attempt)
   if (latest === attempt) return
   if (itemAttemptPassed(latest)) {
     report('warning', 'acceptance-ref-stale', location, `${itemId} cites attempt ${attempt.attempt}, but attempt ${latest.attempt} passed later`)
@@ -86,9 +98,10 @@ function checkItemEvidence(itemId, reference, records, planTimestamp, location, 
   }
 }
 
-function checkTask(id, dir, row, report) {
+function checkTask(id, root, taskLocation, row, report) {
+  const dir = join(root, taskLocation)
   const planPath = join(dir, 'plan.md')
-  const location = `.agent/${id}-plan/plan.md`
+  const location = `${taskLocation}/plan.md`
   if (!existsSync(planPath)) {
     report('error', 'plan-file-missing', location, 'plan.md is missing')
     return
@@ -117,8 +130,9 @@ function checkTask(id, dir, row, report) {
   const overallCriteria = [...planText.matchAll(/^ {2}- (O-\d+):/gm)].map((match) => match[1])
   if (overallCriteria.length === 0) report(status === 'completed' ? 'error' : 'warning', 'overall-criteria-missing', location, 'overall_acceptance lists no O-n criteria')
 
-  const recordsLocation = `.agent/${id}-plan/stages/records.md`
-  const records = readVerificationRecords(join(dir, 'stages', 'records.md'), recordsLocation, report)
+  const recordsLocation = `${taskLocation}/stages/records.md`
+  const recordsPath = join(dir, 'stages', 'records.md')
+  const records = readVerificationRecords(recordsPath, recordsLocation, report)
   const seenItemIds = new Set()
   const itemStatuses = []
   let maxNumber = 0
@@ -133,7 +147,7 @@ function checkTask(id, dir, row, report) {
     if (seenItemIds.has(itemId)) report('error', 'item-duplicate', location, `${itemId} is listed more than once`)
     seenItemIds.add(itemId)
     if (!PLAN_STATUSES.includes(itemStatus)) report('error', 'item-status', location, `${itemId} has invalid status ${itemStatus}`)
-    if (itemStatus === 'completed') checkItemEvidence(itemId, item.acceptance_ref, records, planTimestamp, location, report)
+    if (itemStatus === 'completed') checkItemEvidence(itemId, item.acceptance_ref, records, planTimestamp, planPath, location, report)
   }
   const next = Number(value('next_item_number'))
   if (!Number.isInteger(next) || next <= maxNumber) report('error', 'next-item-number', location, `next_item_number must be an integer above ${maxNumber}`)
@@ -142,25 +156,37 @@ function checkTask(id, dir, row, report) {
   if (status === 'completed') {
     if (itemStatuses.some((s) => s !== 'completed')) report('error', 'completed-open-items', location, 'task is completed but some items are not')
     if (ownerName !== 'none') report('error', 'owner-not-released', location, 'a closed task must set owner to none')
-    const link = LINK_TO_STAGE.exec(fields.get('overall_acceptance_ref') ?? '')
-    const overall = link ? records.get(link[1]) : undefined
+    if (!/^completed\.?$/i.test(value('next_action'))) {
+      report('error', 'completed-next-action', location, 'set next_action to completed after overall verification passes')
+    }
+    const link = readMarkdownLink(fields.get('overall_acceptance_ref'))
+    const overall = linksToFile(link, dir, recordsPath) ? records.get(link.anchor) : undefined
     if (!overall || overall.kind !== 'overall') {
       report('error', 'overall-ref', location, 'completed task needs overall_acceptance_ref linking to its overall stage')
     } else {
       if (overall.planTimestamp !== planTimestamp) report('error', 'overall-stale', location, `overall stage is from plan ${overall.planTimestamp}; closing needs a new overall stage`)
       for (const criterion of overallCriteria) {
-        const checks = overall.blocks.filter(block => criterionId(block) === criterion)
-        const passed = checks.length > 0 && checks.every(hasCurrentPass)
-        if (!passed) report('error', 'overall-criterion', location, `${criterion} needs current passing evidence in its overall stage`)
+        if (!overallCriterionPassed(overall, criterion)) {
+          report('error', 'overall-criterion', location, `${criterion} needs current passing evidence in its overall stage`)
+        }
+      }
+      const latest = latestAttempt(records, overall)
+      if (latest !== overall) {
+        const unresolved = overallCriteria.filter(criterion => !overallCriterionPassed(latest, criterion))
+        if (unresolved.length > 0) {
+          report('warning', 'overall-ref-recheck', location, `Overall attempt ${latest.attempt} lacks passing evidence for ${unresolved.join(', ')}. Review it before relying on attempt ${overall.attempt}.`)
+        } else {
+          report('warning', 'overall-ref-stale', location, `Overall attempt ${latest.attempt} passed after the cited attempt ${overall.attempt}`)
+        }
       }
     }
   }
 
   for (const path of markdownFiles(dir)) {
-    checkForCredentials(readLines(path), `.agent/${id}-plan/${relative(dir, path)}`, report)
+    checkForCredentials(readLines(path), `${taskLocation}/${relative(dir, path).replaceAll('\\', '/')}`, report)
   }
   const notes = join(dir, 'distillation', 'notes.md')
-  if (existsSync(notes)) checkMethods(notes, `.agent/${id}-plan/distillation/notes.md`, records, report)
+  if (existsSync(notes)) checkMethods(notes, `${taskLocation}/distillation/notes.md`, records, report)
 }
 
 /** Checks a repository root. Returns the issues found and the number of task directories. */
@@ -168,12 +194,20 @@ export function checkRoot(root, taskId) {
   const issues = []
   const report = (level, code, location, message) => issues.push({ level, code, where: location, message })
   const indexPath = join(root, 'agent.md')
-  const agentDir = join(root, '.agent')
   const planDirs = new Map()
-  if (existsSync(agentDir)) {
+  for (const recordsRoot of ['.agent', 'agent']) {
+    const agentDir = join(root, recordsRoot)
+    if (!statSync(agentDir, { throwIfNoEntry: false })?.isDirectory()) continue
     for (const entry of readdirSync(agentDir, { withFileTypes: true })) {
-      const match = /^(.+)-plan$/.exec(entry.name)
-      if (match && entry.isDirectory() && (taskId === undefined || match[1] === taskId)) planDirs.set(match[1], join(agentDir, entry.name))
+      const id = /^(.+)-plan$/.exec(entry.name)?.[1]
+      if (!id || !entry.isDirectory() || (taskId !== undefined && id !== taskId)) continue
+      if (recordsRoot === 'agent' && !TASK_ID.test(id)) continue
+      const taskLocation = `${recordsRoot}/${entry.name}`
+      if (planDirs.has(id)) {
+        report('error', 'task-dir-duplicate', taskLocation, `${id} already has a task directory at ${planDirs.get(id)}`)
+      } else {
+        planDirs.set(id, taskLocation)
+      }
     }
   }
   if (!existsSync(indexPath)) {
@@ -190,6 +224,10 @@ export function checkRoot(root, taskId) {
   for (const row of indexTable.rows) {
     const id = plainText(row.task_id ?? '')
     if (!TASK_ID.test(id) || (taskId !== undefined && id !== taskId)) continue
+    const taskLocation = planDirs.get(id)
+    if (taskLocation && !linksToFile(readMarkdownLink(row.plan_link), root, join(root, taskLocation, 'plan.md'))) {
+      report('error', 'index-plan-link', 'agent.md', `${id} must link to its ${taskLocation}/plan.md`)
+    }
     if (indexRows.has(id)) report('error', 'index-duplicate', 'agent.md', `${id} is listed more than once`)
     else indexRows.set(id, row)
   }
@@ -199,11 +237,11 @@ export function checkRoot(root, taskId) {
   for (const id of new Set([...indexRows.keys(), ...planDirs.keys()])) {
     const dir = planDirs.get(id)
     if (!dir) {
-      report('error', 'plan-missing', 'agent.md', `${id} is listed but .agent/${id}-plan/ does not exist`)
+      report('error', 'plan-missing', 'agent.md', `${id} has no task directory under .agent/ or agent/`)
       continue
     }
-    if (!indexRows.has(id)) report('error', 'index-missing-row', `.agent/${id}-plan`, 'task directory is not registered in agent.md')
-    checkTask(id, dir, indexRows.get(id), report)
+    if (!indexRows.has(id)) report('error', 'index-missing-row', dir, 'task directory is not registered in agent.md')
+    checkTask(id, root, dir, indexRows.get(id), report)
   }
   return { issues, tasks: planDirs.size }
 }

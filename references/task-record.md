@@ -6,9 +6,9 @@ Use the project’s working language for descriptions. Use the headings, table c
 
 **Never write credentials or secrets** in `observed`, `evidence`, or any other field. Reference them by name or redact them. If evidence requires a secret value, link to a secured location outside the repository.
 
-Keep records at the repository root, or at the target working directory if there is no repository. Use one row per task in `agent.md`. Its fixed link points to `.agent/<Task ID>-plan/plan.md`. Set the Task ID from the UTC creation time in `yyyy-MM-dd_HH-mm-ss` format, such as `2026-01-15_08-30-12`. For collisions, add `-2`, `-3`, and so on. Use the same time format for `plan_timestamp`, which identifies the current plan version. Preserve unrelated content when updating the index.
+Keep records at the repository root, or at the target working directory if there is no repository. Create new tasks under `.agent/<Task ID>-plan/`. Existing tasks under `agent/<Task ID>-plan/` continue in place. Use one row per task in `agent.md` and link its actual `plan.md`. Set the Task ID from the UTC creation time in `yyyy-MM-dd_HH-mm-ss` format, such as `2026-01-15_08-30-12`. Check both directories for collisions and append `-2`, `-3`, and so on as needed. Use the same time format for `plan_timestamp`, which identifies the current plan version. Preserve unrelated content when updating the index.
 
-**Version control**: Decide whether to commit `.agent/` to Git or add it to `.gitignore`. Committing it preserves history and enables team collaboration; excluding it keeps records local to the working copy. Follow the repository’s existing convention for local task notes.
+**Version control**: Follow the repository’s convention for committing or ignoring task records in `.agent/` and any existing `agent/` task directories.
 
 ```markdown
 # Task Index
@@ -34,7 +34,7 @@ Use `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex or another agent that 
 
 ## Search order
 
-Search the index first, then open the matching `plan.md`. If the index is missing or does not locate the task, search only `.agent/*-plan/plan.md`. Repair the index when writes are allowed and the match is clear. If multiple candidates fit, confirm which to resume. To find an item's verification, follow `acceptance_ref` or search for its exact stage heading; the closing stage is under `<plan_timestamp> / overall / <attempt>` and is linked from `overall_acceptance_ref`. An item ID such as `T-001` is unique within a task. Pair it with `plan_timestamp` to identify verification for a specific plan version. Use actual project or requirement terms in `search_terms`. The plan's `search_terms` is authoritative and the index row repeats it, so a search of `.agent/*-plan/plan.md` still finds the task when the index is stale.
+Search the index first, then open the matching `plan.md`. If the index is missing or does not locate the task, search `.agent/*-plan/plan.md` and `agent/*-plan/plan.md`. Repair the index when writes are allowed and the match is clear. If multiple candidates fit, confirm which to resume. To find an item's verification, follow `acceptance_ref` or search for its exact stage heading; the closing stage is under `<plan_timestamp> / overall / <attempt>` and is linked from `overall_acceptance_ref`. An item ID such as `T-001` is unique within a task. Pair it with `plan_timestamp` to identify verification for a specific plan version. Use actual project or requirement terms in `search_terms`. The plan's `search_terms` is authoritative and the index row repeats it, so searching the plan files still finds the task when the index is stale.
 
 ### Search targets and methods
 
@@ -42,11 +42,11 @@ Each search below has a clear target: a task by ID, a plan by timestamp, a stage
 
 - **Find a task in the index**: search `agent.md` for a line starting with ``| `<task_id>` |``
 - **Find a task by keywords**: case-insensitive search of `agent.md` for a literal substring
-- **Find a task's plan**: whole-line search of `.agent/*-plan/plan.md` for ``- task_id: `<task_id>` ``
+- **Find a task's plan**: whole-line search of the plan files under both task directories for ``- task_id: `<task_id>` ``
 - **Find a specific stage**: whole-line search of a task's `stages/records.md` for `## <plan_timestamp> / <item_id> / <attempt>`
-- **Find methods by keywords**: case-insensitive search of `.agent/**/distillation/notes.md` for a literal substring, then check each match's `status`, `applies_when`, and `source`
+- **Find methods by keywords**: case-insensitive search of `distillation/notes.md` files under both task directories for a literal substring, then check each match's `status`, `applies_when`, and `source`
 
-Run these examples from the repository root. `.agent/` is a hidden directory, and file search tools often skip hidden and ignored paths by default: pass `--hidden --no-ignore` to `rg` for searches within `.agent/`, and confirm that any other search tool includes hidden files. Use `--crlf` for exact line matching with LF or CRLF line endings. For cross-task method searches, restrict results to `distillation/notes.md`. Check the status, applicability, and source of each matching method.
+Run these examples from the repository root. Repeat directory searches with `agent/` if it exists, and use the task's actual directory for a specific stage. Pass `--hidden --no-ignore` to `rg` so it includes hidden and ignored task paths. Use `--crlf` for exact line matching with LF or CRLF line endings.
 
 ```powershell
 rg -n -F -- '| `2026-01-15_08-30-12` |' agent.md
@@ -99,13 +99,13 @@ Use `pending`, `in_progress`, `blocked`, or `completed` for index and plan statu
 | The work is planned | Start the task and its items as `pending`. When work begins, mark the task and the chosen ready item `in_progress`. |
 | An attempt yields evidence | Compare the observation with the item's acceptance criteria. On a pass, link the attempt and complete the item. With a useful next experiment or fix, keep it `in_progress` and update `next_action`. |
 | An item cannot advance | Mark the item `blocked` and save the missing input or condition in `pending_checks`. Continue independent items. Mark the task `blocked` only when none can proceed. |
-| Work resumes or changes hands | Save the latest finding and next action on handoff and release the owner. On return, claim the task, check the saved prerequisite or evidence, and set resumed work to `in_progress`. A handoff alone leaves the task status intact. |
+| Work resumes or changes hands | Save the latest finding and next action on handoff and release the owner. On return, claim the task and check the latest recorded attempt against the plan. If a saved pass still applies but the plan missed it, record its `acceptance_ref`, complete the item and select the next action. If the saved attempt has `revision: none`, run the check again and cite the new attempt if it passes. Verify any other uncertainty before proceeding. A handoff alone leaves the task status intact. |
 | All items pass | Keep the task `in_progress` through overall verification. A gap in the final deliverable sends the affected item back to work. Follow [Closing a task](#closing-a-task) once the criteria pass. |
 | Feedback arrives after delivery | If it shows that an agreed criterion was missed, reopen the affected work under the original task and verify it again. If the user requests a new outcome, start a new task and refer back to the completed one when its evidence helps. |
 
 ### Closing a task
 
-After [overall verification](#overall-verification) passes, set `status: completed`, link `overall_acceptance_ref` to the passing stage, set `owner: none` and `next_action: completed`, and update the index row. The single-task checker reads these saved values to validate closure.
+After [overall verification](#overall-verification) passes, set `status: completed`, link `overall_acceptance_ref` to the passing stage, set `owner: none` and `next_action: completed`, and update the index row. Clear resolved entries from `pending_checks`. The single-task checker reads the saved plan and index to validate closure.
 
 The session that writes those fields remains responsible for record corrections through the final check, including while the saved owner is `none`. For a record error such as a broken link to a passing check, correct the record and rerun the checker. If the deliverable fails a criterion, reclaim the task, reopen the affected item, update the task and index status, clear `overall_acceptance_ref`, and record the next action. Verify the corrected delivery in a new overall attempt before closing again.
 
@@ -189,7 +189,7 @@ The plan item's `acceptance_ref` points to the second stage: `[2026-01-15_08-31-
 
 - For committed inputs, record the commit that was tested. Before reuse, compare the relevant paths against that commit and check for relevant untracked inputs.
 - For modified or untracked inputs, record their paths and content hashes at verification time. Compare those hashes with the current files before reuse, including when the working tree is now clean. A commit comparison alone cannot identify the bytes tested in a dirty tree.
-- For external inputs, record a content hash or a stable version identifying the tested input. If you cannot identify it, write `revision: none` and rerun the check when its evidence is needed again.
+- For external inputs, record a content hash or a stable version identifying the tested input. If you cannot identify it, write `revision: none` and record what the check found. This result describes that attempt. For a later check, including overall verification, run the check on the current input and record a new result.
 
 Reuse passing item evidence only while its checked inputs and acceptance conditions still match. Record the comparison alongside the link. When evidence becomes stale, add `evidence_status: historical` to its Verification Block and verify the changed inputs again.
 
@@ -219,6 +219,8 @@ For `evidence_impact`, link the actual check and identify what must be reverifie
 
 After all items are complete, verify the final deliverable against the numbered overall criteria in the current plan. For a criterion already covered by a passing item attempt, record one line with its criterion ID, source link and freshness comparison. For a new check, use a Verification Block with its result and revision.
 
+Use the user’s final acceptance conditions to choose the overall criteria. For example, if delivery requires an image to have alt text and a button to have an explicit type, those two conditions are enough. If both need a fresh check on the final HTML, inspect the file once and record both observations. Add a separate overall criterion when the parts interact in a way that needs its own check.
+
 ```markdown
 <a name="stage-2026-01-15_08-31-00-overall-1"></a>
 
@@ -238,7 +240,7 @@ After all items are complete, verify the final deliverable against the numbered 
 - O-1: [Export row count and order](#stage-2026-01-15_08-31-00-t-002-2) — checked inputs are tracked and unchanged from `c3d4e5f` to `e4f5a6b`.
 ```
 
-Close the task only when every criterion has passing evidence in this stage. A `fail` or `unverified` result keeps the task open: add or reopen the plan items it needs, then write a new overall stage after they pass. If the plan changes after an overall stage is written, that stage is `historical`, and the closure needs a new overall stage under the new `plan_timestamp`.
+Close the task only when every criterion has passing evidence in this stage. If a newer overall attempt exists under the same plan version, review it before relying on an earlier pass. If the deliverable falls short, add or reopen the affected items and write a new overall attempt after they pass. If an attempted recheck could not run, check whether the earlier evidence still applies to the current deliverable and criteria. After changing the plan version, verify the overall criteria under the new `plan_timestamp`.
 
 ## Complex replanning
 
@@ -273,6 +275,6 @@ Before adopting a method, confirm `status: active`, valid source evidence, and t
 
 ### Feedback from reuse
 
-If a method works as written, the downstream stage’s `applied_distillation` and verification result are enough. When a new case changes the advice, edit the original note’s `applies_when` or `check` and link the downstream attempt beside the change. Keep the originating `source` intact. For example, if a feed repeats IDs for different currencies, narrow “match rows by ID” to feeds with unique IDs. Recommend a replacement matching key once an attempt verifies it.
+If a method works as written, the downstream stage’s `applied_distillation` and verification result are enough. If a new case reveals a limit, narrow the original note’s `applies_when` or clarify its `check` and link the downstream observation beside the change. Keep the originating `source` intact. For example, if a feed repeats IDs for different currencies, narrow “match rows by ID” to feeds with unique IDs. If a downstream attempt verifies a different matching procedure, such as matching by ID and currency, save it as a separate method with that passing attempt as its `source`.
 
 For feedback across tasks, use a relative link from the method note to the downstream observation. An update to a completed task’s method note leaves its delivery closed. If another session owns the source task, record the proposed wording and observation in the downstream attempt for that owner to apply.

@@ -143,6 +143,27 @@ test('a complete task has no issues', () => {
   assert.deepEqual(codesOf(validTask()), [])
 })
 
+test('both record directories work in the same repository', () => {
+  const files = validTask()
+  const other = '2026-02-01_00-00-00'
+  const legacy = validTask()
+  const legacyDir = `agent/${other}-plan`
+  files['agent.md'].push(legacy['agent.md'].at(-1).replaceAll(TASK, other).replace('.agent/', 'agent/'))
+  for (const [path, lines] of Object.entries(legacy)) {
+    if (path.startsWith(DIR)) files[path.replace(DIR, legacyDir)] = lines.map(line => line.replaceAll(TASK, other))
+  }
+  files['agent/release-plan/plan.md'] = ['# Unrelated document']
+  const root = makeRoot(files)
+  assert.deepEqual(checkRoot(root), { issues: [], tasks: 2 })
+  assert.deepEqual(checkRoot(root, other), { issues: [], tasks: 1 })
+})
+
+test('a task ID cannot appear in both record directories', () => {
+  const files = validTask()
+  files[PLAN_PATH.replace('.agent/', 'agent/')] = files[PLAN_PATH]
+  assert.deepEqual(codesOf(files), ['error:task-dir-duplicate'])
+})
+
 test('an empty repository has nothing to check', () => {
   assert.deepEqual(checkRoot(makeRoot({})).issues, [])
 })
@@ -162,6 +183,16 @@ test('historical evidence cannot complete an item or its reused overall criterio
 test('the index status must match the plan', () => {
   const files = edit(validTask(), 'agent.md', (lines) => lines.map((line) => line.replace('| completed |', '| in_progress |')))
   assert.ok(codesOf(files).includes('error:index-status-mismatch'))
+})
+
+test('task and evidence links must point to the files users open', () => {
+  const files = reuseInOverall(validTask())
+  files['agent.md'] = files['agent.md'].map(line => line.replace(PLAN_PATH, '.agent/other-plan/plan.md'))
+  files[PLAN_PATH] = files[PLAN_PATH].map(line => line.replaceAll('(stages/records.md#', '(wrong.md#'))
+  files[RECORDS] = files[RECORDS].map(line => line.replace('[row count](#', '[row count](wrong.md#'))
+  assert.deepEqual(codesOf(files), [
+    'error:index-plan-link', 'error:reused-source-broken', 'error:acceptance-ref-broken', 'error:overall-ref',
+  ])
 })
 
 test('a task directory missing from the index is an error', () => {
@@ -198,9 +229,36 @@ test('a failing overall criterion blocks closure', () => {
   assert.ok(codesOf(files).includes('error:overall-criterion'))
 })
 
+test('overall attempts in the same plan cannot share a number', () => {
+  const files = edit(validTask(), RECORDS, lines => {
+    const start = lines.indexOf(`<a name="stage-${PLAN}-overall-1"></a>`)
+    return [...lines, '', ...lines.slice(start)]
+  })
+  assert.deepEqual(codesOf(files), ['error:attempt-duplicate'])
+})
+
+test('a newer overall attempt in the same plan is surfaced when closure cites an older pass', () => {
+  for (const result of ['pass', 'fail', 'unverified']) {
+    const files = validTask()
+    files[RECORDS].push(
+      `<a name="stage-${PLAN}-overall-2"></a>`, `## ${PLAN} / overall / 2`,
+      '### Verification Block', '- criteria: O-1 Row count', '- revision: def5678', `- result: ${result}`,
+    )
+    const expected = result === 'pass' ? 'warning:overall-ref-stale' : 'warning:overall-ref-recheck'
+    assert.deepEqual(codesOf(files), [expected])
+  }
+})
+
 test('a closed task must release its owner', () => {
   const files = edit(validTask(), PLAN_PATH, (lines) => replaceAll(lines, '- owner: `none`', '- owner: `session abc, lead` claimed `2026-01-15_08-30-12`'))
   assert.ok(codesOf(files).includes('error:owner-not-released'))
+})
+
+test('a closed task cannot leave a pending next action', () => {
+  const files = edit(validTask(), PLAN_PATH, lines => replaceAll(
+    lines, '- next_action: completed.', '- next_action: Run overall verification.',
+  ))
+  assert.deepEqual(codesOf(files), ['error:completed-next-action'])
 })
 
 test('a stage heading needs its anchor', () => {
@@ -323,6 +381,15 @@ function reuseInOverall(files) {
     `- O-1: [row count](#stage-${PLAN}-t-001-1) — input hashes match.`,
   ])
 }
+
+test('an unversioned check can pass directly but cannot be reused', () => {
+  const original = '- revision: abc1234, clean working tree'
+  const files = edit(validTask(), RECORDS, lines => replaceAll(lines, original, '- revision: none'))
+  assert.deepEqual(codesOf(files), [])
+
+  const reused = reuseInOverall(files)
+  assert.deepEqual(codesOf(reused), ['error:reused-source-no-revision', 'error:overall-criterion'])
+})
 
 test('closure accepts a compact citation alongside a new check', () => {
   const files = reuseInOverall(validTask())

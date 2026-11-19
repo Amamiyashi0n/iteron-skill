@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
-import { readLines, readAnchors, parseRecordSections, parseVerificationBlocks } from './record-markdown.mjs'
+import { dirname, relative, resolve } from 'node:path'
+import { readLines, readAnchors, parseRecordSections, parseVerificationBlocks, readMarkdownLink } from './record-markdown.mjs'
 
 export const ITEM_ID = /^T-\d{3,}$/
-export const LINK_TO_STAGE = /#(stage-[^)\s]+)/
 const RESULTS = ['pass', 'fail', 'unverified']
 const UNRESOLVED_REVISION = /(?:^|\bsha-?256[\s:=]+)`?\$(?:\{\w+\}|\w+)(?=$|[`\s,;])/i
 
@@ -55,11 +55,11 @@ export function readVerificationRecords(path, location, report) {
       }
     }
     if (kind !== 'replan' && blocks.length === 0) report('warning', 'stage-without-block', location, `${section.heading} has no Verification Block`)
-    if (kind === 'item') {
+    if (kind !== 'replan') {
       const key = `${section.planTimestamp}/${subject}`
       attempts.set(key, [...(attempts.get(key) ?? []), Number(number)])
     }
-    checkEvidenceSources(blocks, records, section.heading, location, report)
+    checkEvidenceSources(blocks, records, path, section.heading, location, report)
     records.set(anchor, { kind, planTimestamp: section.planTimestamp, itemId: kind === 'item' ? subject : undefined, attempt: number && Number(number), heading: section.heading, blocks })
   }
   for (const [key, numbers] of attempts) {
@@ -70,10 +70,11 @@ export function readVerificationRecords(path, location, report) {
   return records
 }
 
-export function latestItemAttempt(records, attempt) {
+export function latestAttempt(records, attempt) {
   let latest = attempt
   for (const record of records.values()) {
-    if (record.itemId === attempt.itemId && record.planTimestamp === attempt.planTimestamp && record.attempt > latest.attempt) {
+    if (record.kind === attempt.kind && record.itemId === attempt.itemId &&
+        record.planTimestamp === attempt.planTimestamp && record.attempt > latest.attempt) {
       latest = record
     }
   }
@@ -81,17 +82,22 @@ export function latestItemAttempt(records, attempt) {
 }
 
 /** Resolve citations against earlier entries in the append-only log. */
-function checkEvidenceSources(blocks, previousRecords, heading, location, report) {
+function checkEvidenceSources(blocks, previousRecords, path, heading, location, report) {
   for (const block of blocks) {
     if (!block.has('reused')) continue
-    const link = LINK_TO_STAGE.exec(block.get('reused'))
-    const source = link && previousRecords.get(link[1])
-    if (!link) {
+    const link = readMarkdownLink(block.get('reused'))
+    if (!link?.anchor) {
       report('error', 'reused-link-missing', location, `${heading}: reused evidence needs an item attempt link`)
-    } else if (!source) {
-      report('error', 'reused-source-broken', location, `${heading}: no earlier record matches ${link[1]}`)
+      continue
+    }
+    const source = previousRecords.get(link.anchor)
+    if ((link.path && relative(path, resolve(dirname(path), link.path)) !== '') || !source) {
+      report('error', 'reused-source-broken', location, `${heading}: reuse must point to an earlier attempt in this log`)
     } else if (source.kind !== 'item' || !source.blocks.length || source.blocks.some(check => check.get('result') !== 'pass')) {
       report('error', 'reused-source-not-pass', location, `${heading}: the cited item attempt did not pass`)
+    } else if (source.blocks.some(check => /^(?:none|`none`)$/i.test(check.get('revision') ?? ''))) {
+      block.set('evidence_status', 'historical')
+      report('error', 'reused-source-no-revision', location, `${heading}: the cited attempt has revision: none; run the check again`)
     } else if (!itemAttemptPassed(source)) {
       // Preserve old citations in the log while excluding them from current acceptance.
       block.set('evidence_status', 'historical')
