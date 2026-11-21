@@ -58,6 +58,7 @@ npx skills add Amamiyashi0n/iteron-skill --skill iteron-skill -a claude-code -a 
 npm test
 npm run check -- <目标仓库路径> <任务ID>
 npm run check -- <目标仓库路径>
+npm run check -- --json --strict --stale-days 7 <目标仓库路径>
 ```
 
-带任务 ID 时检查指定任务及其索引行。省略任务 ID 时检查目标仓库的全部记录。记录校验报告错误时返回退出码 1，只有警告时返回 0。
+带任务 ID 时检查指定任务及其索引行。省略任务 ID 时检查目标仓库的全部记录。记录校验报告错误时返回退出码 1，只有警告时返回 0（传入 `--strict` 时警告也返回 1，`--json` 输出结构化 JSON，`--stale-days <天数>` 自定义认领过期阈值，`--help` 查看用法）。没有 Node.js 时，按[任务记录规范](references/task-record.md#without-node)里的清单人工核对，并向用户说明脚本没有运行。校验器报告的问题怎么处理，见[规范中的对照表](references/task-record.md#resolving-checker-findings)。

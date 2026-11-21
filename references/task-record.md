@@ -2,9 +2,9 @@
 
 ## Text format
 
-Use the project’s working language for descriptions. Use the headings, table columns, and lowercase field names below. Put one field on each line. Keep exact file names, field names, IDs, and links searchable. Summarize long evidence and link to its source. A stage or distilled method runs from its heading to the next heading at the same level. Read its status, applicability, and evidence together.
+Use the project’s working language for descriptions. Use the headings, table columns, and lowercase field names below. Put one field on each line. Keep exact file names, field names, IDs, and links searchable. In table cells, write a literal pipe as `\|` or keep it inside a code span. Summarize long evidence and link to its source. A stage or distilled method runs from its heading to the next heading at the same level. Read its status, applicability, and evidence together.
 
-**Never write credentials or secrets** in `observed`, `evidence`, or any other field. Reference them by name or redact them. If evidence requires a secret value, link to a secured location outside the repository.
+**Never write credentials or secrets** in `observed`, `evidence`, or any other field. Reference them by name or redact them. If evidence requires a secret value, link to a secured location outside the repository. The checker reports an error for private keys, cloud and token formats, bearer headers and URLs with an embedded password, and a warning for password-style assignments.
 
 Keep records at the repository root, or at the target working directory if there is no repository. Create new tasks under `.agent/<Task ID>-plan/`. Existing tasks under `agent/<Task ID>-plan/` continue in place. Use one row per task in `agent.md` and link its actual `plan.md`. Set the Task ID from the UTC creation time in `yyyy-MM-dd_HH-mm-ss` format, such as `2026-01-15_08-30-12`. Check both directories for collisions and append `-2`, `-3`, and so on as needed. Use the same time format for `plan_timestamp`, which identifies the current plan version. Preserve unrelated content when updating the index.
 
@@ -24,13 +24,13 @@ Create every file and block from the copyable [templates](../templates/README.md
 
 ## Discovery pointer
 
-A new session can discover the index through the project's agent instructions. When registering the first task, add this line to the root instruction file the current agent loads if it does not already point to `agent.md`:
+A new session can discover the index through the project's agent instructions. When registering the first task, offer to add this line to the root instruction file the current agent loads, unless it already points to `agent.md`:
 
 ```markdown
 Staged tasks are indexed in `agent.md`. Load the iteron-skill skill before planning, resuming, or changing them.
 ```
 
-Use `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex or another agent that loads it. Create the relevant file with just the pointer if it is missing. If the agent has no known project instruction file, mention the index location in the report. Report any instruction file you updated.
+Use `CLAUDE.md` for Claude Code and `AGENTS.md` for Codex or another agent that loads it. These files steer every later session in the project, so ask the user before creating or editing one. Once they agree, create the file with just the pointer if it is missing, and report that you changed it. If they decline, cannot be asked, or the agent has no known project instruction file, leave the instruction files alone, keep `agent.md` as the index, and give the user the line and the index location in the report.
 
 ## Search order
 
@@ -55,6 +55,12 @@ rg -n -x --crlf --hidden --no-ignore -g '**/*-plan/plan.md' -F -- '- task_id: `2
 rg -n -x --crlf --hidden --no-ignore -F -- '## 2026-01-15_08-31-00 / T-001 / 1' .agent/2026-01-15_08-30-12-plan/stages/records.md
 rg -ni --hidden --no-ignore -g '**/distillation/notes.md' -F -- 'raw_amount' .agent/
 ```
+
+## Index merge conflicts
+
+Two branches that each register a task append a row at the end of the `agent.md` table, so merging them can conflict even though the rows are independent. Keep every row from both sides, delete the conflict markers, and make sure each `task_id` appears once. Then run the checker without a task ID. It reports leftover markers as `merge-conflict`, a task directory with no row as `index-missing-row`, and a repeated row as `index-duplicate`.
+
+When a row is lost or stale, rebuild it from the task's `plan.md`, whose `status` and `search_terms` are authoritative. Task directories are named by task ID and written by one owner, so they rarely conflict. If a project merges `agent.md` often, it can add `agent.md merge=union` to `.gitattributes` so git keeps both sides itself; propose that to the user rather than editing the file unasked.
 
 ## `plan.md`
 
@@ -90,7 +96,9 @@ rg -ni --hidden --no-ignore -g '**/distillation/notes.md' -F -- 'raw_amount' .ag
 | T-002 | Generate amounts output | `amounts.jsonl` for the current batch | T-001 | Row count and order match the input | completed | [`2026-01-15_08-31-00 / T-002 / 2`](stages/records.md#stage-2026-01-15_08-31-00-t-002-2) |
 ```
 
-Use `pending`, `in_progress`, `blocked`, or `completed` for index and plan statuses. The plan's `status` field is the task status, and the index row repeats it; when they disagree, the plan wins and the index is repaired. Order items by dependencies and priority. Assign increasing IDs starting at `T-001`, with at least three digits and leading zeros as needed. `next_item_number` is the next unassigned number. Keep it when resuming or replanning. Removed IDs stay retired. Use `pending_checks` for unconfirmed actions, checks, or blockers, with a place to look or a condition for resuming.
+Optional plan fields: `baseline` for improvement work, naming the starting observation, the input it was taken on and what outcome counts as enough; `open_assumptions` for an assumption that affects a decision; `delegated` while someone else works on an item; and `cancel_reason` for a cancelled task.
+
+Use `pending`, `in_progress`, `blocked`, or `completed` for index and plan statuses. A whole task can also be `cancelled`; plan items stay in the four states. The plan's `status` field is the task status, and the index row repeats it; when they disagree, the plan wins and the index is repaired. Order items by dependencies and priority. `depends_on` holds item IDs from the current plan, or `-`. The checker rejects an unknown ID and warns about a dependency cycle or a completed item whose dependency is not completed. Assign increasing IDs starting at `T-001`, with at least three digits and leading zeros as needed. `next_item_number` is the next unassigned number. Keep it when resuming or replanning. Removed IDs stay retired. The checker compares `next_item_number` with every item ID in `stages/records.md`. Use `pending_checks` for unconfirmed actions, checks, or blockers, with a place to look or a condition for resuming.
 
 ### Task lifecycle
 
@@ -101,17 +109,18 @@ Use `pending`, `in_progress`, `blocked`, or `completed` for index and plan statu
 | An item cannot advance | Mark the item `blocked` and save the missing input or condition in `pending_checks`. Continue independent items. Mark the task `blocked` only when none can proceed. |
 | Work resumes or changes hands | Save the latest finding and next action on handoff and release the owner. On return, claim the task and check the latest recorded attempt against the plan. If a saved pass still applies but the plan missed it, record its `acceptance_ref`, complete the item and select the next action. If the saved attempt has `revision: none`, run the check again and cite the new attempt if it passes. Verify any other uncertainty before proceeding. A handoff alone leaves the task status intact. |
 | All items pass | Keep the task `in_progress` through overall verification. A gap in the final deliverable sends the affected item back to work. Follow [Closing a task](#closing-a-task) once the criteria pass. |
+| The user abandons the task | Set the task and index `status: cancelled`, record `cancel_reason` in `plan.md`, set `owner: none` and leave the records in place. Start a new task that cites it to resume the work. |
 | Feedback arrives after delivery | If it shows that an agreed criterion was missed, reopen the affected work under the original task and verify it again. If the user requests a new outcome, start a new task and refer back to the completed one when its evidence helps. |
 
 ### Closing a task
 
-After [overall verification](#overall-verification) passes, set `status: completed`, link `overall_acceptance_ref` to the passing stage, set `owner: none` and `next_action: completed`, and update the index row. Clear resolved entries from `pending_checks`. The single-task checker reads the saved plan and index to validate closure.
+After [overall verification](#overall-verification) passes, set `status: completed`, link `overall_acceptance_ref` to the passing stage, set `owner: none` and `next_action: completed`, and update the index row. Clear resolved entries from `pending_checks`. A completed task must also have no open `pending_checks` and no `delegated` entries. The single-task checker reads the saved plan and index to validate closure.
 
 The session that writes those fields remains responsible for record corrections through the final check, including while the saved owner is `none`. For a record error such as a broken link to a passing check, correct the record and rerun the checker. If the deliverable fails a criterion, reclaim the task, reopen the affected item, update the task and index status, clear `overall_acceptance_ref`, and record the next action. Verify the corrected delivery in a new overall attempt before closing again.
 
 ### Ownership
 
-`owner` identifies the writer of an open task and when it claimed the task. Use a session ID or agent name and a UTC claim time in `yyyy-MM-dd_HH-mm-ss` format. Claim the task when starting or resuming work. Set `owner: none` on handoff or when stopping with work left. For the final write and any record corrections, follow [Closing a task](#closing-a-task).
+`owner` identifies the writer of an open task and when it claimed the task. Use a session ID or agent name and a UTC claim time in `yyyy-MM-dd_HH-mm-ss` format. Claim the task when starting or resuming work. Set `owner: none` on handoff or when stopping with work left. The checker warns when an open task's claim is older than seven days or has no claim time. For the final write and any record corrections, follow [Closing a task](#closing-a-task).
 
 - **Another owner is recorded.** Do not write records. Reading them is fine. The other session may still be running, and its liveness cannot be checked from the files. Ask the user whether to take over. When taking over, record the previous owner and the reason in `pending_checks`, re-read the plan, and confirm the resume point before acting.
 - **Write against the current file.** Re-read `plan.md` or `stages/records.md` immediately before editing it. If its content changed since you last read it and you did not make the change, stop and reconcile before writing.
@@ -119,11 +128,11 @@ The session that writes those fields remains responsible for record corrections 
 
 ## `stages/records.md`
 
-Identify a stage by `Plan Timestamp / Plan Item ID / Attempt Number`. Each verification of an item is a separate stage, numbered starting from 1. Give each stage an anchor and point `acceptance_ref` to the latest successful attempt. Record the criteria actually checked in the Verification Block.
+Identify a stage by `Plan Timestamp / Plan Item ID / Attempt Number`. Each verification of an item is a separate stage, numbered starting from 1. Give each stage an anchor and point `acceptance_ref` to the latest successful attempt. Record the criteria actually checked in the Verification Block. The `criteria` of the attempt that closes an item or a criterion must cover the plan's wording, so quote that wording and put specifics in `method` and `observed`. The checker ignores case and punctuation and accepts the match when either wording contains the other. The block also needs `subject`, `method` and `observed`. The checker reports a gap as an error on a completed task and as a warning before that.
 
 A failed verification is still recorded as a stage, with `result: fail` or `result: unverified`. When fixing the problem and verifying again, increment the attempt number. Keep the most recent passing attempt in `acceptance_ref`. If the latest attempt under that plan version fails or is unverified, review what changed before relying on the earlier result. Reopen the item when the evidence no longer supports completion.
 
-For improvement work, use an existing observation as the baseline, or measure it before changing the relevant inputs. Compare attempts on the same case using the same acceptance check. A useful result can be qualitative, such as locating the point where a record disappears. If a change makes no difference, use that finding to rule out a cause or try a different approach. When no useful check is possible, record what would unblock the item. Stop iterating once the agreed criteria pass.
+For improvement work, use an existing observation as the baseline, or measure it before changing the relevant inputs, and save it in the plan's `baseline` field. Compare attempts on the same case using the same acceptance check. A useful result can be qualitative, such as locating the point where a record disappears. If a change makes no difference, use that finding to rule out a cause or try a different approach. When no useful check is possible, record what would unblock the item. Stop iterating once the agreed criteria pass.
 
 ```markdown
 # Stage Records
@@ -183,6 +192,16 @@ For improvement work, use an existing observation as the baseline, or measure it
 The plan item's `acceptance_ref` points to the second stage: `[2026-01-15_08-31-00 / T-002 / 2](#stage-2026-01-15_08-31-00-t-002-2)`.
 
 
+### Independent verification
+
+A check is only as strong as its distance from the work it judges. Prefer, in this order:
+
+1. A check that exists independently of the change: an existing test suite, reference data, a tool's own output, or the user's acceptance.
+2. A check run by a verifier that did not produce the deliverable, such as a subagent that receives only the criteria and the deliverable and returns a filled Verification Block.
+3. A check the author wrote and ran.
+
+Name which one in the optional `checked_by` field, for example `existing test suite`, `subagent reviewer` or `author`. When a criterion could only be checked by the person who wrote the deliverable, say so in the final report so the user can decide whether that is enough. The checker verifies that the block is complete; it cannot judge independence.
+
 ### Evidence freshness
 
 `revision` records the exact state that was checked, so a later session can tell whether the evidence still applies. Record it when the check runs. When writing a hash from a script, save the computed value and read back the record to confirm it matches the check output.
@@ -197,7 +216,7 @@ When a distilled method is used, add `applied_distillation` to the downstream st
 
 When items, execution order, dependencies, or acceptance criteria materially change, replace the Current Plan and record the actual UTC `plan_timestamp`, distinct from the previous value. Keep the Task ID and directory fixed. Progress updates keep the current timestamp. Remove canceled or replaced items from the current plan. Reuse only evidence that still covers the new conditions. Evaluate in-flight or late results against the current conditions too. If a pending operation might change an artifact, confirm its result and inspect the artifact before resuming dependent work.
 
-When replanning, append one replan entry to the stage file, identified by the new `plan_timestamp`. Include impact and resume details as needed.
+When replanning, append one replan entry to the stage file, identified by the new `plan_timestamp`. The checker reports an error when records from an earlier plan version exist but no entry carries the current `plan_timestamp`, or when an entry is newer than `plan_timestamp`. Include impact and resume details as needed.
 
 ```markdown
 <a name="stage-2026-01-15_09-02-40-replan"></a>
@@ -241,6 +260,36 @@ Use the user’s final acceptance conditions to choose the overall criteria. For
 ```
 
 Close the task only when every criterion has passing evidence in this stage. If a newer overall attempt exists under the same plan version, review it before relying on an earlier pass. If the deliverable falls short, add or reopen the affected items and write a new overall attempt after they pass. If an attempted recheck could not run, check whether the earlier evidence still applies to the current deliverable and criteria. After changing the plan version, verify the overall criteria under the new `plan_timestamp`.
+
+## Resolving checker findings
+
+The checker prints a level, a code, a location and a message. An error means the records cannot be trusted as written and blocks closing. A warning needs a look, and one that stays should be explained in the report. Correct the records the check read; do not edit a past attempt to read differently, and do not reword a plan criterion to match a weaker check.
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `criteria-mismatch` | A cited attempt does not state the plan's criterion. | Decide which is true. If the check did cover it and only the wording differs, run the attempt again or add one whose `criteria` quotes the plan. If the check fell short, run it properly as a new attempt and cite that. If the criterion itself changed, replan and verify under the new `plan_timestamp`. |
+| `evidence-incomplete` | A checked block lacks `subject`, `method` or `observed`. | Fill the missing fields only if the attempt really did and saw those things. Otherwise run the check again as a new attempt. |
+| `merge-conflict` | Conflict markers are left in a record. | Follow [Index merge conflicts](#index-merge-conflicts). |
+| `secret-detected`, `possible-secret` | A credential-looking value is recorded. | Redact it or link to a secured location. If it was real, rotate it, because version history keeps the old text. |
+| `owner-stale`, `owner-claim-time` | The recorded claim is old or has no time. | Confirm with the user that the other session is gone, then take over as described under [Ownership](#ownership). |
+| `placeholder-unfilled` | A template placeholder remains. | Fill it or delete the line. |
+| `replan-missing`, `replan-ahead`, `replan-timestamp` | The plan version and the replan entries disagree. | Add the missing entry or correct `plan_timestamp` so the newest entry matches it. |
+| `next-item-number` | The next number would reuse a retired item ID. | Raise `next_item_number` above every ID in the plan and in `stages/records.md`. |
+| `reused-comparison-missing` | A reused evidence citation links to a passing attempt without explaining why it still applies. | Add the freshness and scope comparison after the link (for example `— checked inputs unchanged`), or run a fresh check. |
+| `applied-distillation-broken`, `applied-distillation-historical` | `applied_distillation` links to a missing method anchor or a `historical` method. | Fix the link to an existing method anchor, or verify whether the historical method still applies before relying on it. |
+
+Rerun the checker after each correction.
+
+## Without Node
+
+The checker needs Node.js 20 or later. If it is not available, do not install a runtime unasked, and do not report that the check passed. Read the records against this list, then tell the user that the script was not run and that the review was manual:
+
+1. Index: one row per task, its status equal to the plan's, its link opening the actual `plan.md`, and no conflict markers.
+2. Plan: `task_id`, `plan_timestamp`, `status`, `owner`, `next_item_number`, `search_terms` and `overall_acceptance_ref` present; item IDs unique; `depends_on` naming only items in the plan; `next_item_number` above every ID ever used in the plan or `stages/records.md`.
+3. Each completed item: `acceptance_ref` links its own latest passing attempt in the current plan version, and that attempt has `criteria` quoting the plan's wording, `subject`, `revision`, `method`, `result: pass` and `observed`.
+4. Plan version: if records from an earlier version exist, a `## <plan_timestamp> / replan` entry exists and is not newer than `plan_timestamp`.
+5. Closing: every item completed, every `O-n` passing in the overall stage the plan cites, `owner: none`, `next_action: completed`, and `pending_checks` and `delegated` empty.
+6. No credentials, unfilled `{{placeholders}}` or leftover template text in the task directory.
 
 ## Complex replanning
 

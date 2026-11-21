@@ -319,6 +319,7 @@ test('ordinary text that mentions a credential word is not flagged', () => {
 
 test('an item attempt can reuse a previous passing attempt', () => {
   const files = validTask()
+  files[PLAN_PATH] = replaceAll(files[PLAN_PATH], '- next_item_number: `2`', '- next_item_number: `3`')
   files[RECORDS].push(
     `<a name="stage-${PLAN}-t-002-1"></a>`, `## ${PLAN} / T-002 / 1`,
     '### Verification Block', '- criteria: Rows match.',
@@ -345,7 +346,7 @@ test('a full reuse block cannot satisfy an overall criterion', () => {
 function appendAttempt(files, attempt, result, plan = PLAN) {
   files[RECORDS].push(
     '', `<a name="stage-${plan}-t-001-${attempt}"></a>`, `## ${plan} / T-001 / ${attempt}`,
-    '### Verification Block', '- criteria: Rows match.', '- revision: def5678', `- result: ${result}`,
+    '### Verification Block', '- criteria: Rows match.', '- subject: amounts.jsonl against feed.csv.', '- method: Compare the id sequences.', '- observed: Rows match.', '- revision: def5678', `- result: ${result}`,
   )
 }
 
@@ -394,7 +395,7 @@ test('an unversioned check can pass directly but cannot be reused', () => {
 test('closure accepts a compact citation alongside a new check', () => {
   const files = reuseInOverall(validTask())
   files[PLAN_PATH].splice(files[PLAN_PATH].indexOf('  - O-1: Row count matches the feed.') + 1, 0, '  - O-2: Check export order.')
-  files[RECORDS].push('### Verification Block', '- criteria: O-2 Order', '- result: pass', '- revision: abc1234')
+  files[RECORDS].push('### Verification Block', '- criteria: O-2 Order', '- subject: amounts.jsonl', '- method: Compare the id sequences.', '- observed: Order matches.', '- result: pass', '- revision: abc1234')
   assert.deepEqual(codesOf(files), [])
 })
 
@@ -439,4 +440,281 @@ test('the CLI isolates a selected task and retains repository-wide checks', () =
   const unknown = run('2026-03-01_00-00-00')
   assert.equal(unknown.status, 1)
   assert.match(unknown.stdout, /\[task-not-found\]/)
+})
+
+// --- Checks for gaps in the record checker ---
+
+import { splitCells } from '../scripts/record-markdown.mjs'
+
+const OLD_PLAN = '2025-12-31_00-00-00'
+
+function stageBlock(plan, item, attempt) {
+  return [
+    '', `<a name="stage-${plan}-${item.toLowerCase()}-${attempt}"></a>`, '', `## ${plan} / ${item} / ${attempt}`, '',
+    '- delivery: Earlier delivery.', '', '### Verification Block', '',
+    '- criteria: Rows match.', '- subject: amounts.jsonl against feed.csv.', '- revision: abc1234, clean working tree',
+    '- method: Compare the id sequences.', '- result: pass', '- observed: 3 rows in both files.',
+  ]
+}
+
+function openTask(owner) {
+  const files = validTask()
+  files['agent.md'] = files['agent.md'].map(line => line.replace('| completed |', '| in_progress |'))
+  files[PLAN_PATH] = files[PLAN_PATH].map(line => line.replace('- status: completed', '- status: in_progress').replace(/^- owner: .*$/, `- owner: ${owner}`))
+  return files
+}
+
+const issuesAt = (files, now) => checkRoot(makeRoot(files), undefined, { now }).issues.map(issue => `${issue.level}:${issue.code}`)
+
+test('a completed item must check the criterion the plan states', () => {
+  const files = edit(validTask(), RECORDS, lines => replaceAll(lines, '- criteria: Rows match.', '- criteria: The page loads.'))
+  assert.ok(codesOf(files).includes('error:criteria-mismatch'))
+  const reworded = edit(validTask(), RECORDS, lines => replaceAll(lines, '- criteria: Rows match.', '- criteria: Output rows match the input feed.'))
+  assert.deepEqual(codesOf(reworded), [])
+  const overall = edit(validTask(), RECORDS, lines => replaceAll(lines, '- criteria: O-1 Row count matches the feed.', '- criteria: O-1 Looks fine.'))
+  assert.ok(codesOf(overall).includes('error:criteria-mismatch'))
+})
+
+test('closing evidence must say what was tested, how and what was seen', () => {
+  const item = edit(validTask(), RECORDS, lines => dropFirst(lines, '- observed: 3 rows in both files.'))
+  assert.deepEqual(codesOf(item), ['error:evidence-incomplete'])
+  const overall = edit(validTask(), RECORDS, lines => dropFirst(lines, '- method: Compare line counts.'))
+  assert.deepEqual(codesOf(overall), ['error:evidence-incomplete'])
+})
+
+test('an unfilled template placeholder is an error', () => {
+  const field = edit(validTask(), RECORDS, lines => [...lines, '- observed: {{observed}}'])
+  assert.ok(codesOf(field).includes('error:placeholder-unfilled'))
+  const cell = edit(validTask(), PLAN_PATH, lines => lines.map(line => line.replace('| Export |', '| {{requirement}} |')))
+  assert.ok(codesOf(cell).includes('error:placeholder-unfilled'))
+})
+
+test('a newer plan version needs its replan entry', () => {
+  const files = validTask()
+  files[RECORDS].push(...stageBlock(OLD_PLAN, 'T-001', 1))
+  assert.ok(codesOf(files).includes('error:replan-missing'))
+  files[RECORDS].push('', `<a name="stage-${PLAN}-replan"></a>`, '', `## ${PLAN} / replan`, '', `- previous_plan_timestamp: \`${OLD_PLAN}\``, '- decision: Split the export.')
+  assert.deepEqual(codesOf(files), [])
+})
+
+test('a replan entry must move the plan version forward', () => {
+  const same = validTask()
+  same[RECORDS].push('', `<a name="stage-${PLAN}-replan"></a>`, '', `## ${PLAN} / replan`, '', `- previous_plan_timestamp: \`${PLAN}\``)
+  assert.ok(codesOf(same).includes('error:replan-timestamp'))
+  const later = '2026-02-01_00-00-00'
+  const ahead = validTask()
+  ahead[RECORDS].push('', `<a name="stage-${later}-replan"></a>`, '', `## ${later} / replan`, '', `- previous_plan_timestamp: \`${PLAN}\``)
+  assert.ok(codesOf(ahead).includes('error:replan-ahead'))
+})
+
+test('depends_on must name items in the current plan', () => {
+  const withDeps = (deps) => (lines) => lines.map(line => line.replace('| amounts.jsonl | - |', `| amounts.jsonl | ${deps} |`))
+  assert.ok(codesOf(edit(validTask(), PLAN_PATH, withDeps('T-099'))).includes('error:depends-unknown'))
+  assert.ok(codesOf(edit(validTask(), PLAN_PATH, withDeps('T-001'))).includes('error:depends-self'))
+  const cycle = edit(validTask(), PLAN_PATH, withDeps('T-002'))
+  cycle[PLAN_PATH] = replaceAll(cycle[PLAN_PATH], '- next_item_number: `2`', '- next_item_number: `3`')
+  cycle[PLAN_PATH].push('| T-002 | Report | report.md | T-001 | Report exists | pending | - |')
+  assert.ok(codesOf(cycle).includes('warning:depends-cycle'))
+})
+
+test('a retired item ID cannot be reused', () => {
+  const files = validTask()
+  files[RECORDS].push(...stageBlock(PLAN, 'T-002', 1))
+  assert.ok(codesOf(files).includes('error:next-item-number'))
+  files[PLAN_PATH] = replaceAll(files[PLAN_PATH], '- next_item_number: `2`', '- next_item_number: `3`')
+  assert.deepEqual(codesOf(files), [])
+})
+
+test('an open task with an old or unreadable claim is flagged', () => {
+  const files = openTask('`session abc` claimed `2026-01-01_00-00-00`')
+  assert.ok(issuesAt(files, Date.UTC(2026, 0, 20)).includes('warning:owner-stale'))
+  assert.ok(!issuesAt(files, Date.UTC(2026, 0, 2)).includes('warning:owner-stale'))
+  assert.ok(issuesAt(openTask('session abc'), Date.UTC(2026, 0, 2)).includes('warning:owner-claim-time'))
+})
+
+test('a cancelled task needs a reason and a released owner', () => {
+  const files = validTask()
+  files['agent.md'] = files['agent.md'].map(line => line.replace('| completed |', '| cancelled |'))
+  files[PLAN_PATH] = files[PLAN_PATH].map(line => line.replace('- status: completed', '- status: cancelled'))
+  assert.deepEqual(codesOf(files), ['error:cancel-reason-missing'])
+  files[PLAN_PATH].splice(files[PLAN_PATH].indexOf('- goal: Export amounts.') + 1, 0, '- cancel_reason: The user dropped the work.')
+  assert.deepEqual(codesOf(files), [])
+  files[PLAN_PATH] = replaceAll(files[PLAN_PATH], '- owner: `none`', '- owner: `session abc` claimed `2026-01-15_08-30-12`')
+  assert.deepEqual(codesOf(files), ['error:owner-not-released'])
+})
+
+test('a closed task has no pending checks or delegations', () => {
+  const pending = edit(validTask(), PLAN_PATH, lines => replaceAll(lines, '- pending_checks: None.', '- pending_checks: Verify the export.'))
+  assert.deepEqual(codesOf(pending), ['error:closure-pending-checks'])
+  const delegated = edit(validTask(), PLAN_PATH, lines => [...lines, '- delegated: T-001 to agent reviewer'])
+  assert.deepEqual(codesOf(delegated), ['error:closure-delegated'])
+})
+
+test('pipes inside table cells stay in their cell', () => {
+  assert.deepEqual(splitCells('| a | `x|y` | c \\| d |'), ['a', '`x|y`', 'c | d'])
+  assert.deepEqual(splitCells('| a | `unbalanced | b |'), ['a', '`unbalanced', 'b'])
+  const withCriterion = (text) => (lines) => lines.map(line => line.replace('| Rows match |', `| ${text} |`))
+  assert.deepEqual(codesOf(edit(validTask(), PLAN_PATH, withCriterion('Rows match `rg a|b`'))), [])
+  assert.deepEqual(codesOf(edit(validTask(), PLAN_PATH, withCriterion('Rows match a \\| b'))), [])
+  assert.ok(codesOf(edit(validTask(), PLAN_PATH, withCriterion('Rows match a|b'))).includes('error:table-row-columns'))
+})
+
+test('credential shapes are rejected and ordinary text is left alone', () => {
+  const flagged = [
+    [['-----BEGIN RSA ', 'PRIVATE KEY-----'].join(''), 'error:secret-detected'],
+    [['AKIA', 'IOSFODNN7EXAMPLE'].join(''), 'error:secret-detected'],
+    [['postgres://admin:', 'hunter2@db.local/app'].join(''), 'error:secret-detected'],
+    [['Authorization: Bearer ', 'abcdefghijklmnop1234'].join(''), 'error:secret-detected'],
+    [['密码是 ', 'hunter2x'].join(''), 'warning:possible-secret'],
+  ]
+  for (const [sample, code] of flagged) {
+    const files = edit(validTask(), RECORDS, lines => [...lines, `- observed: ${sample}`])
+    assert.ok(codesOf(files).includes(code), sample)
+  }
+  for (const sample of ['postgres://admin:${DB_PASS}@db.local/app', '密码是否正确', 'the bearer token was rotated', 'token: none']) {
+    const files = edit(validTask(), RECORDS, lines => [...lines, `- observed: ${sample}`])
+    assert.deepEqual(codesOf(files), [], sample)
+  }
+})
+
+function stillOpen(files) {
+  const open = edit(files, PLAN_PATH, lines => replaceAll(lines, '- status: completed', '- status: in_progress'))
+  return edit(open, 'agent.md', lines => lines.map(line => line.replace('| completed |', '| in_progress |')))
+}
+
+test('an evidence gap is a warning while the task is open and an error once it is closed', () => {
+  const mismatch = edit(validTask(), RECORDS, lines => replaceAll(lines, '- criteria: Rows match.', '- criteria: The page loads.'))
+  const open = codesOf(stillOpen(mismatch))
+  assert.ok(open.includes('warning:criteria-mismatch'))
+  assert.ok(!open.some(code => code.startsWith('error:criteria-mismatch')))
+  const gap = edit(validTask(), RECORDS, lines => dropFirst(lines, '- observed: 3 rows in both files.'))
+  assert.ok(codesOf(stillOpen(gap)).includes('warning:evidence-incomplete'))
+  assert.ok(codesOf(gap).includes('error:evidence-incomplete'))
+})
+
+test('the criteria-mismatch message names the three ways forward', () => {
+  const files = edit(validTask(), RECORDS, lines => replaceAll(lines, '- criteria: Rows match.', '- criteria: The page loads.'))
+  const issue = checkRoot(makeRoot(files)).issues.find(found => found.code === 'criteria-mismatch')
+  assert.match(issue.message, /quote the plan's wording/)
+  assert.match(issue.message, /new attempt/)
+  assert.match(issue.message, /replan/)
+})
+
+test('an unresolved merge conflict in the index or a task file is an error', () => {
+  const index = edit(validTask(), 'agent.md', lines => [...lines, '=======', '>>>>>>> feature'].reduce((all, line, i) => (i === lines.length ? [...all, '<<<<<<< HEAD', line] : [...all, line]), []))
+  assert.ok(codesOf(index).includes('error:merge-conflict'))
+  const records = edit(validTask(), RECORDS, lines => [...lines, '<<<<<<< HEAD'])
+  assert.ok(codesOf(records).includes('error:merge-conflict'))
+  assert.ok(!codesOf(validTask()).includes('error:merge-conflict'))
+})
+
+test('a setext underline or a table of equals signs is not a conflict', () => {
+  const files = edit(validTask(), RECORDS, lines => [...lines, '', 'Heading', '=======', ''])
+  assert.ok(!codesOf(files).includes('error:merge-conflict'))
+})
+
+// --- Checks for gap fixes ---
+
+test('reused evidence must include a comparison after the link', () => {
+  const overallBare = edit(validTask(), RECORDS, lines => [
+    ...lines.slice(0, lines.lastIndexOf('### Verification Block')),
+    `- O-1: [row count](#stage-${PLAN}-t-001-1)`,
+  ])
+  assert.ok(codesOf(overallBare).includes('error:reused-comparison-missing'))
+
+  const itemBare = validTask()
+  itemBare[PLAN_PATH] = replaceAll(itemBare[PLAN_PATH], '- next_item_number: `2`', '- next_item_number: `3`')
+  itemBare[RECORDS].push(
+    `<a name="stage-${PLAN}-t-002-1"></a>`, `## ${PLAN} / T-002 / 1`,
+    '### Verification Block', '- criteria: Rows match.',
+    `- reused: [row count](#stage-${PLAN}-t-001-1) —`,
+    '- result: pass',
+  )
+  assert.ok(codesOf(itemBare).includes('error:reused-comparison-missing'))
+})
+
+test('unfilled placeholders are caught in headings, indented criteria, owner, links and index', () => {
+  assert.ok(codesOf(edit(validTask(), PLAN_PATH, lines => replaceAll(lines, '# Export', '# {{title}}'))).includes('error:placeholder-unfilled'))
+  assert.ok(codesOf(edit(validTask(), PLAN_PATH, lines => replaceAll(lines, '  - O-1: Row count matches the feed.', '  - O-1: {{overall_criterion}}'))).includes('error:placeholder-unfilled'))
+  assert.ok(codesOf(openTask('`{{owner}}` claimed `{{claimed_at}}`')).includes('error:placeholder-unfilled'))
+  assert.ok(codesOf(edit(validTask(), 'agent.md', lines => lines.map(line => line.replace('| Export |', '| {{title}} |')))).includes('error:placeholder-unfilled'))
+  const linkPlaceholder = edit(validTask(), RECORDS, lines => [
+    ...lines.slice(0, lines.lastIndexOf('### Verification Block')),
+    `- O-1: [row count](#stage-${PLAN}-t-001-1) — {{comparison}}`,
+  ])
+  assert.ok(codesOf(linkPlaceholder).includes('error:placeholder-unfilled'))
+})
+
+test('criteria matching rejects trivial fragments and stop words while keeping real phrases', () => {
+  for (const trivial of ['at', 'the', 'ok', 's']) {
+    const files = edit(validTask(), RECORDS, lines => replaceAll(lines, '- criteria: Rows match.', `- criteria: ${trivial}`))
+    assert.ok(codesOf(files).includes('error:criteria-mismatch'), trivial)
+  }
+  const zh = edit(validTask(), PLAN_PATH, lines => lines.map(line => line.replace('| Rows match |', '| 导出行数一致 |')))
+  zh[RECORDS] = replaceAll(zh[RECORDS], '- criteria: Rows match.', '- criteria: 导出行数一致。')
+  assert.deepEqual(codesOf(zh), [])
+})
+
+test('indented overall criteria and compact markdown tables parse cleanly', () => {
+  const files = edit(validTask(), PLAN_PATH, lines => lines
+    .map(line => line === '  - O-1: Row count matches the feed.' ? '    - O-1: Row count matches the feed.' : line)
+    .map(line => line.startsWith('| item_id |') ? '|item_id|requirement|expected_result|depends_on|acceptance_criteria|status|acceptance_ref|' : line))
+  assert.deepEqual(codesOf(files), [])
+})
+
+test('a replan entry cannot point to a previous_plan_timestamp newer than itself', () => {
+  const files = validTask()
+  files[RECORDS].push('', `<a name="stage-${PLAN}-replan"></a>`, '', `## ${PLAN} / replan`, '', '- previous_plan_timestamp: `2026-02-01_00-00-00`', '- decision: Reorder.')
+  assert.ok(codesOf(files).includes('error:replan-timestamp'))
+})
+
+test('unlabeled API key shapes are rejected as secrets', () => {
+  const samples = [
+    ['sk-proj-', '1234567890abcdefghijklmnop'].join(''),
+    ['AIza', 'SyA12345678901234567890123456789012'].join(''),
+  ]
+  for (const sample of samples) {
+    const files = edit(validTask(), RECORDS, lines => [...lines, `- observed: ${sample}`])
+    assert.ok(codesOf(files).includes('error:secret-detected'), sample)
+  }
+})
+
+test('applied_distillation links are resolved and historical methods warn', () => {
+  const active = edit(validTask(), RECORDS, lines => {
+    const idx = lines.indexOf('- delivery: Exported the amounts.')
+    return [...lines.slice(0, idx + 1), `- applied_distillation: [M-1](../distillation/notes.md#distillation-${PLAN}-t-001-1) — unit check`, ...lines.slice(idx + 1)]
+  })
+  assert.deepEqual(codesOf(active), [])
+
+  const historical = edit(active, NOTES, lines => [...replaceAll(lines, '- status: active', '- status: historical'), '- reason: Superseded.'])
+  assert.deepEqual(codesOf(historical), ['warning:applied-distillation-historical'])
+
+  const broken = edit(active, RECORDS, lines => lines.map(line => line.replace('t-001-1)', 't-999-1)')))
+  assert.deepEqual(codesOf(broken), ['error:applied-distillation-broken'])
+})
+
+test('the CLI supports --help, --json, --strict, --stale-days and rejects unknown flags', () => {
+  const cli = fileURLToPath(new URL('../scripts/check-records.mjs', import.meta.url))
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' })
+
+  const help = run('--help')
+  assert.equal(help.status, 0)
+  assert.match(help.stdout, /Usage: node scripts\/check-records\.mjs/)
+
+  const badFlag = run('--bogus')
+  assert.equal(badFlag.status, 2)
+  assert.match(badFlag.stderr, /unknown option/)
+
+  const stale = openTask('`session abc` claimed `2020-01-01_00-00-00`')
+  const root = makeRoot(stale)
+  const jsonRun = run('--json', '--stale-days', '1', root)
+  assert.equal(jsonRun.status, 0, jsonRun.stderr)
+  const payload = JSON.parse(jsonRun.stdout)
+  assert.equal(payload.tasks, 1)
+  assert.equal(payload.errors, 0)
+  assert.ok(payload.warnings >= 1)
+  assert.ok(payload.issues.some(i => i.code === 'owner-stale'))
+
+  const strictRun = run('--strict', root)
+  assert.equal(strictRun.status, 1)
 })

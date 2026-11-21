@@ -9,6 +9,7 @@
 - goal: {{goal}}
 - requirements: {{requirements}}
 - constraints: {{constraints}}
+- baseline: {{optional: starting observation, its input, and what outcome counts as enough}}
 - overall_acceptance:
   - O-1: {{overall_criterion}}
 - overall_acceptance_ref: -

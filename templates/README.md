@@ -22,7 +22,7 @@ The paths below are for new tasks. For a task already stored under `agent/`, kee
 
 Append blocks to the end of their file; never insert them between existing blocks. The record then reads in time order, and an earlier block's line numbers stay valid.
 
-Add `open_assumptions` when an assumption affects a decision and `delegated` when someone else is working on an item. Add links to the plan’s `records` field as the stage log and method notes are created.
+Add `baseline` for improvement work, `open_assumptions` when an assumption affects a decision, `delegated` when someone else is working on an item, and `cancel_reason` when a task is cancelled. In a Verification Block, `checked_by` names who or what ran the check. Add links to the plan’s `records` field as the stage log and method notes are created.
 
 ## Placeholders
 

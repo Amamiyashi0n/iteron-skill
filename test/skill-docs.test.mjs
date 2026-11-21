@@ -46,3 +46,21 @@ test('rejects frontmatter shapes the parser cannot read', () => {
   assert.throws(() => parseSkillFile('---\nname: a\ndescription: >\n  folded\n---\n'), /block scalar/)
   assert.throws(() => parseSkillFile('---\nname: a\ndescription: b\n  continued\n---\n'), /continuation/)
 })
+
+const slug = (heading) => heading.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replace(/ /g, '-')
+
+test('heading anchors in the skill docs resolve', () => {
+  for (const doc of DOCS) {
+    const path = join(ROOT, doc)
+    const text = readFileSync(path, 'utf8').replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '')
+    for (const [, target] of text.matchAll(/\]\(([^)\s]+)\)/g)) {
+      const [file, anchor] = target.split('#')
+      if (!anchor || /^(https?:|mailto:)/.test(target)) continue
+      const targetPath = file ? join(dirname(path), file) : path
+      if (!targetPath.endsWith('.md')) continue
+      const body = readFileSync(targetPath, 'utf8').replace(/```[\s\S]*?```/g, '')
+      const anchors = new Set([...body.matchAll(/^#{1,6} +(.+)$/gm)].map((match) => slug(match[1])))
+      assert.ok(anchors.has(anchor), `${doc} links to missing anchor ${target}`)
+    }
+  }
+})

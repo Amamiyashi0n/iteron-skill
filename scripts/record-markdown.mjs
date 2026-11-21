@@ -13,17 +13,52 @@ export function readMarkdownLink(text = '') {
   return { path: match[1], anchor: match[2] }
 }
 
-/** Cells of the table whose header row starts with `| firstColumn |`. */
+/** Splits a table row into cells. A pipe written as `\|` or placed in a code span stays inside its cell. */
+export function splitCells(line) {
+  const split = (protectCode) => {
+    const body = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '')
+    const cells = []
+    let current = ''
+    let inCode = false
+    for (let i = 0; i < body.length; i++) {
+      const char = body[i]
+      if (char === '\\' && body[i + 1] === '|') {
+        current += '|'
+        i++
+      } else if (char === '`' && protectCode) {
+        inCode = !inCode
+        current += char
+      } else if (char === '|' && !inCode) {
+        cells.push(current.trim())
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    cells.push(current.trim())
+    return { cells, open: inCode }
+  }
+  const protectedSplit = split(true)
+  return protectedSplit.open ? split(false).cells : protectedSplit.cells
+}
+
+/** Cells of the table whose header row starts with `firstColumn`. Rows with extra cells are listed in `overflow`. */
 export function parseTable(lines, firstColumn) {
-  const start = lines.findIndex((line) => line.startsWith(`| ${firstColumn} |`))
-  if (start < 0) return { headers: [], rows: [] }
-  const headers = lines[start].slice(1, -1).split('|').map((cell) => cell.trim())
+  const start = lines.findIndex((line, i) =>
+    line.trim().startsWith('|') &&
+    splitCells(line)[0] === firstColumn &&
+    (lines[i + 1] ?? '').trim().startsWith('|'),
+  )
+  if (start < 0) return { headers: [], rows: [], overflow: [] }
+  const headers = splitCells(lines[start])
   const rows = []
-  for (let i = start + 2; i < lines.length && lines[i].startsWith('|'); i++) {
-    const cells = lines[i].slice(1, -1).split('|').map((cell) => cell.trim())
+  const overflow = []
+  for (let i = start + 2; i < lines.length && lines[i].trim().startsWith('|'); i++) {
+    const cells = splitCells(lines[i])
+    if (cells.length > headers.length) overflow.push({ line: i + 1, cells: cells.length })
     rows.push(Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ''])))
   }
-  return { headers, rows }
+  return { headers, rows, overflow }
 }
 
 /** Reports a missing table or required columns that its header row lacks. */
@@ -31,6 +66,9 @@ export function checkColumns(table, required, label, location, report) {
   if (!table.headers.length) return report('error', 'table-missing', location, `${label} table is missing`)
   for (const column of required) {
     if (!table.headers.includes(column)) report('error', 'table-column-missing', location, `${label} table has no ${column} column`)
+  }
+  for (const { line, cells } of table.overflow ?? []) {
+    report('error', 'table-row-columns', `${location}:${line}`, `${label} row has ${cells} cells but the header has ${table.headers.length}; write a literal pipe as \\| or put it in a code span`)
   }
 }
 

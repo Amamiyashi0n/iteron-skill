@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
-import { readLines, readAnchors, parseRecordSections, parseVerificationBlocks, readMarkdownLink } from './record-markdown.mjs'
+import { readLines, readAnchors, parseFields, parseRecordSections, parseVerificationBlocks, readMarkdownLink } from './record-markdown.mjs'
 
 export const ITEM_ID = /^T-\d{3,}$/
 const RESULTS = ['pass', 'fail', 'unverified']
 const UNRESOLVED_REVISION = /(?:^|\bsha-?256[\s:=]+)`?\$(?:\{\w+\}|\w+)(?=$|[`\s,;])/i
+const UNFILLED = /^(?:-|n\/a|tbd|todo)?\.?$/i
+const EVIDENCE_FIELDS = ['subject', 'method', 'observed']
 
 export function hasCurrentPass(block) {
   return block.get('result') === 'pass' && block.get('evidence_status') !== 'historical'
@@ -12,6 +14,19 @@ export function hasCurrentPass(block) {
 
 export function itemAttemptPassed(record) {
   return record.kind === 'item' && record.blocks.length > 0 && record.blocks.every(hasCurrentPass)
+}
+
+function sectionHeaderFields(body) {
+  const stop = body.findIndex((line) => line.startsWith('### '))
+  return parseFields(stop < 0 ? body : body.slice(0, stop))
+}
+
+function hasReuseComparison(value = '') {
+  const rest = value
+    .replace(/\[[^\]]*\]\([^)]*\)/, '')
+    .replace(/^[\s—–\-;:,]+/, '')
+    .replace(/[\s.]+$/, '')
+  return rest !== '' && !UNFILLED.test(rest)
 }
 
 /** Stage sections of stages/records.md, keyed by anchor, with their structure checked. */
@@ -60,7 +75,16 @@ export function readVerificationRecords(path, location, report) {
       attempts.set(key, [...(attempts.get(key) ?? []), Number(number)])
     }
     checkEvidenceSources(blocks, records, path, section.heading, location, report)
-    records.set(anchor, { kind, planTimestamp: section.planTimestamp, itemId: kind === 'item' ? subject : undefined, attempt: number && Number(number), heading: section.heading, blocks })
+    const header = sectionHeaderFields(section.body)
+    records.set(anchor, {
+      kind,
+      planTimestamp: section.planTimestamp,
+      itemId: kind === 'item' ? subject : undefined,
+      attempt: number && Number(number),
+      heading: section.heading,
+      appliedDistillation: header.get('applied_distillation'),
+      blocks,
+    })
   }
   for (const [key, numbers] of attempts) {
     const sorted = [...numbers].sort((a, b) => a - b)
@@ -85,7 +109,8 @@ export function latestAttempt(records, attempt) {
 function checkEvidenceSources(blocks, previousRecords, path, heading, location, report) {
   for (const block of blocks) {
     if (!block.has('reused')) continue
-    const link = readMarkdownLink(block.get('reused'))
+    const raw = block.get('reused') ?? ''
+    const link = readMarkdownLink(raw)
     if (!link?.anchor) {
       report('error', 'reused-link-missing', location, `${heading}: reused evidence needs an item attempt link`)
       continue
@@ -98,9 +123,20 @@ function checkEvidenceSources(blocks, previousRecords, path, heading, location, 
     } else if (source.blocks.some(check => /^(?:none|`none`)$/i.test(check.get('revision') ?? ''))) {
       block.set('evidence_status', 'historical')
       report('error', 'reused-source-no-revision', location, `${heading}: the cited attempt has revision: none; run the check again`)
-    } else if (!itemAttemptPassed(source)) {
-      // Preserve old citations in the log while excluding them from current acceptance.
-      block.set('evidence_status', 'historical')
+    } else {
+      if (!hasReuseComparison(raw)) {
+        report('error', 'reused-comparison-missing', location, `${heading}: reused evidence needs a freshness/scope comparison after the link`)
+      }
+      if (!itemAttemptPassed(source)) {
+        // Preserve old citations in the log while excluding them from current acceptance.
+        block.set('evidence_status', 'historical')
+      }
     }
   }
+}
+
+/** Fields a checked block must fill so a later reader can tell what was tested and what was seen. */
+export function missingEvidenceFields(block) {
+  if (block.has('reused')) return []
+  return EVIDENCE_FIELDS.filter((key) => UNFILLED.test((block.get(key) ?? '').trim()))
 }
