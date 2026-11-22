@@ -63,7 +63,19 @@ node scripts/new-task.mjs --title "导出批量金额" --goal "导出的每一�
   --item "复现缺失的数据行|能用 feed.csv 复现|用 feed.csv 复现出缺失的数据行" <目标仓库路径>
 ```
 
-任务 ID 取 UTC 创建时间，同一秒内重复创建会加 `-2`、`-3` 后缀。脚本生成的 `plan.md` 带 `owner` 认领和第一个续做动作 `start T-001`，生成后应能通过下面的校验。依赖关系、`baseline` 等可选字段需要再手工补充。
+任务 ID 取 UTC 创建时间，同一秒内重复创建会加 `-2`、`-3` 后缀。脚本生成的 `plan.md` 带 `owner` 认领和第一个续做动作 `start T-001`，生成后应能通过下面的校验。`--item` 可以加第四段写依赖，例如 `需求|预期结果|验收标准|T-001`；`--baseline` 写入改进类任务的起点观察。其余可选字段需要再手工补充。
+
+## 记录验证
+
+用 `add-stage.mjs` 往任务的 `stages/records.md` 追加一次验证，它会按计划版本和条目自动编号，写好锚点和 Verification Block。不写 `--criteria` 时，条目的验收标准默认取计划里的原话。
+
+```sh
+node scripts/add-stage.mjs --task <任务ID> --item T-001 \
+  --delivery "做了什么" --subject "测了什么" --method "怎么测" --observed "看到了什么" \
+  --result pass --revision "<提交号或 none>" --complete <目标仓库路径>
+```
+
+`--complete` 只在 `--result pass` 的条目验证上有效，会把该条目标为 `completed` 并写入 `acceptance_ref`。总验收用 `--overall --criteria "O-1 ..."`。关闭任务时的 `owner`、`next_action` 等字段仍需手工写，写完再运行校验。
 
 ## 校验与开发
 

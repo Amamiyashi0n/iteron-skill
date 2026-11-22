@@ -22,8 +22,10 @@ const USAGE = [
   '  --title <text>          Task title (required)',
   '  --goal <text>           Goal (required)',
   '  --criterion <text>      Overall acceptance criterion; repeatable (at least one)',
-  '  --item <req|expected|criteria>',
-  '                          Plan item; repeatable (at least one), fields separated by "|"',
+  '  --item <req|expected|criteria[|depends_on]>',
+  '                          Plan item; repeatable (at least one), fields separated by "|".',
+  '                          depends_on lists item IDs such as T-001,T-002; items are numbered T-001, T-002, ...',
+  '  --baseline <text>       Starting observation and what outcome counts as enough (improvement work)',
   '  --requirements <text>   Requirements (default: see goal)',
   '  --constraints <text>    Constraints (default: none)',
   '  --search-terms <text>   Search terms (default: title)',
@@ -58,13 +60,19 @@ export function createTask(root, options, now = new Date()) {
   if (criteria.length === 0) throw new Error('at least one --criterion is required')
   if (items.length === 0) throw new Error('at least one --item is required')
 
+  const ids = items.map((_, i) => `T-${String(i + 1).padStart(3, '0')}`)
   const rows = items.map((raw, i) => {
     const parts = raw.split('|').map(clean)
-    if (parts.length !== 3 || parts.some((p) => !p)) {
-      throw new Error(`--item needs "requirement|expected|criteria", got: ${raw}`)
+    if (parts.length < 3 || parts.length > 4 || parts.slice(0, 3).some((p) => !p)) {
+      throw new Error(`--item needs "requirement|expected|criteria[|depends_on]", got: ${raw}`)
     }
-    const id = `T-${String(i + 1).padStart(3, '0')}`
-    return `| ${id} | ${cell(parts[0])} | ${cell(parts[1])} | - | ${cell(parts[2])} | pending | - |`
+    const id = ids[i]
+    const deps = (parts[3] ?? '').split(/[\s,;]+/).filter((token) => token && token !== '-')
+    for (const dep of deps) {
+      if (!ids.includes(dep)) throw new Error(`${id} depends on ${dep}, which is not one of ${ids.join(', ')}`)
+      if (dep === id) throw new Error(`${id} cannot depend on itself`)
+    }
+    return `| ${id} | ${cell(parts[0])} | ${cell(parts[1])} | ${deps.length > 0 ? deps.join(', ') : '-'} | ${cell(parts[2])} | pending | - |`
   })
 
   const stamp = formatTimestamp(now)
@@ -86,6 +94,7 @@ export function createTask(root, options, now = new Date()) {
     `- goal: ${clean(options.goal)}`,
     `- requirements: ${clean(options.requirements ?? options.goal)}`,
     `- constraints: ${clean(options.constraints ?? 'none')}`,
+    ...(options.baseline ? [`- baseline: ${clean(options.baseline)}`] : []),
     '- overall_acceptance:',
     ...criteria.map((c, i) => `  - O-${i + 1}: ${clean(c)}`),
     '- overall_acceptance_ref: -',
@@ -120,7 +129,7 @@ function parseArgs(args) {
   const o = { criteria: [], items: [] }
   const flags = {
     '--title': 'title', '--goal': 'goal', '--requirements': 'requirements', '--constraints': 'constraints',
-    '--search-terms': 'searchTerms', '--owner': 'owner',
+    '--search-terms': 'searchTerms', '--owner': 'owner', '--baseline': 'baseline',
   }
   const positionals = []
   for (let i = 0; i < args.length; i++) {
