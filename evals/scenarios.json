@@ -53,12 +53,6 @@
       "planTimestampChanged": true,
       "replanEntry": true,
       "nextItemNumberNotLower": true,
-      "unchangedRefs": [
-        "T-001"
-      ],
-      "attemptsUnchanged": [
-        "T-001"
-      ],
       "exporterUnchanged": true
     }
   },

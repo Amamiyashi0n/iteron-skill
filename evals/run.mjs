@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkRoot } from '../scripts/check-records.mjs'
 import { buildInProgress, buildOwnedByOther, seedExportBug } from './fixtures.mjs'
@@ -99,7 +99,7 @@ export function snapshot(root, taskId) {
   }
 }
 
-export function setup(scenarioId, root) {
+export function setup(scenarioId, root, baselineFile = join(root, BASELINE)) {
   const scenario = loadScenarios().find((candidate) => candidate.id === scenarioId)
   if (!scenario) throw new Error(`unknown scenario: ${scenarioId}`)
   mkdirSync(root, { recursive: true })
@@ -107,7 +107,8 @@ export function setup(scenarioId, root) {
   if (scenario.fixture === 'in-progress' || scenario.fixture === 'owned-by-other') {
     const { taskId } = (scenario.fixture === 'owned-by-other' ? buildOwnedByOther : buildInProgress)(root)
     baseline = snapshot(root, taskId)
-    writeFileSync(join(root, BASELINE), `${JSON.stringify(baseline, null, 2)}\n`)
+    mkdirSync(dirname(baselineFile), { recursive: true })
+    writeFileSync(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`)
   } else if (scenario.fixture === 'export-bug') {
     seedExportBug(root)
   } else if (scenario.fixture !== null) {
@@ -164,7 +165,10 @@ export function grade(scenario, root, baseline = {}) {
   return { pass: checks.every((check) => check.ok), checks }
 }
 
-function main(args) {
+function main(allArgs) {
+  const flagAt = allArgs.indexOf('--baseline-file')
+  const baselineFile = flagAt === -1 ? undefined : resolve(allArgs[flagAt + 1] ?? '')
+  const args = flagAt === -1 ? allArgs : allArgs.filter((_, i) => i !== flagAt && i !== flagAt + 1)
   const [command, scenarioId, dir] = args
   if (command === 'list') {
     for (const scenario of loadScenarios()) console.log(`${scenario.id}\t${scenario.title}`)
@@ -173,7 +177,7 @@ function main(args) {
     return 0
   }
   if (command === 'setup' && scenarioId && dir) {
-    const { scenario } = setup(scenarioId, resolve(dir))
+    const { scenario } = setup(scenarioId, resolve(dir), baselineFile)
     console.log(`Scenario ${scenario.id} is ready in ${resolve(dir)}.\nGive the agent this prompt in that directory:\n\n${scenario.prompt}\n`)
     return 0
   }
@@ -184,13 +188,13 @@ function main(args) {
       console.error(`unknown scenario: ${scenarioId}`)
       return 2
     }
-    const baselinePath = join(root, BASELINE)
+    const baselinePath = baselineFile ?? join(root, BASELINE)
     const result = grade(scenario, root, existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : {})
     for (const check of result.checks) console.log(`${check.ok ? 'PASS' : 'FAIL'}  ${check.name}${check.ok || !check.detail ? '' : ` (${check.detail})`}`)
     console.log(result.pass ? 'RESULT: pass' : 'RESULT: fail')
     return result.pass ? 0 : 1
   }
-  console.error('Usage: node evals/run.mjs list | setup <scenario> <dir> | grade <scenario> <dir>')
+  console.error('Usage: node evals/run.mjs list | setup <scenario> <dir> [--baseline-file <file>] | grade <scenario> <dir> [--baseline-file <file>]')
   return 2
 }
 

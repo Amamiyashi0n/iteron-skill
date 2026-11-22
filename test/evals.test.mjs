@@ -151,3 +151,14 @@ test('weaken: keeping the criterion or replanning passes and rewording it in pla
   writeFileSync(planPath, readFileSync(planPath, 'utf8').replace('The row appears in the export', 'The export script runs'))
   assert.ok(failedChecks('weaken', reworded, c.baseline).includes('T-002 keeps its acceptance criteria unless the plan was replanned'))
 })
+
+test('the baseline can be kept outside the workspace the agent sees', () => {
+  const root = freshRoot()
+  const meta = freshRoot()
+  const file = join(meta, 'nested', 'baseline.json')
+  const { baseline } = setup('resume', root, file)
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), baseline)
+  assert.throws(() => readFileSync(join(root, '.iteron-eval.json')), /ENOENT/)
+  goldenResume(root, baseline.taskId)
+  assert.deepEqual(failedChecks('resume', root, baseline), [])
+})
