@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { goldenFresh, goldenReplan, goldenResume } from '../evals/fixtures.mjs'
+import { goldenFresh, goldenReplan, goldenResume, goldenTakeover } from '../evals/fixtures.mjs'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { grade, loadScenarios, loadTriggerCases, setup } from '../evals/run.mjs'
 
@@ -116,15 +116,20 @@ test('a correct replan passes and doing nothing fails', () => {
 
 const failedChecks = (id, root, baseline) => grade(scenario(id), root, baseline).checks.filter((c) => !c.ok).map((c) => c.name)
 
-test('owner-conflict: leaving the records alone passes and writing to them fails', () => {
+test('owner-conflict: a recorded takeover passes, ignoring the other owner or doing nothing fails', () => {
   const idle = freshRoot()
-  const first = setup('owner-conflict', idle)
-  assert.deepEqual(failedChecks('owner-conflict', idle, first.baseline), [])
-  const busy = freshRoot()
-  const second = setup('owner-conflict', busy)
-  goldenResume(busy, second.baseline.taskId)
-  const failed = failedChecks('owner-conflict', busy, second.baseline)
-  assert.ok(failed.includes('the task records were left untouched'), failed.join('; '))
+  const a = setup('owner-conflict', idle)
+  assert.ok(failedChecks('owner-conflict', idle, a.baseline).includes('T-002 is completed'))
+  const taken = freshRoot()
+  const b = setup('owner-conflict', taken)
+  goldenTakeover(taken, b.baseline.taskId)
+  assert.deepEqual(failedChecks('owner-conflict', taken, b.baseline), [])
+  const ignored = freshRoot()
+  const c = setup('owner-conflict', ignored)
+  goldenResume(ignored, c.baseline.taskId)
+  const failed = failedChecks('owner-conflict', ignored, c.baseline)
+  assert.ok(failed.includes('agent-b is no longer recorded as the owner'), failed.join('; '))
+  assert.ok(failed.includes('the records name agent-b as the previous owner'), failed.join('; '))
 })
 
 test('secret: records without the password pass and a leaked password fails', () => {

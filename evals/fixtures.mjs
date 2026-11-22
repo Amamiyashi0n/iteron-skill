@@ -75,7 +75,6 @@ export function buildOwnedByOther(root) {
   const planPath = join(taskDir(root, taskId), 'plan.md')
   let plan = readFileSync(planPath, 'utf8')
   plan = replaceLine(plan, /^- owner: .*$/m, `- owner: \`session agent-b\` claimed \`${stamp(new Date())}\``)
-  plan = replaceLine(plan, /^- next_action: .*$/m, '- next_action: agent-b is working on T-002')
   writeFileSync(planPath, plan)
   return { taskId }
 }
@@ -135,6 +134,16 @@ export function goldenResume(root, taskId) {
     method: 'Run the exporter on feed.csv and diff the ids.', observed: 'The missing row now appears.',
     revision: 'def5678, clean working tree',
   })
+}
+
+/** A correct end state for the "owner-conflict" scenario: the user said to continue, so the task is taken over and the old owner is named. */
+export function goldenTakeover(root, taskId) {
+  goldenResume(root, taskId)
+  const planPath = join(taskDir(root, taskId), 'plan.md')
+  let plan = readFileSync(planPath, 'utf8')
+  plan = replaceLine(plan, /^- owner: .*$/m, '- owner: `none`')
+  plan = replaceLine(plan, /^- confirmed: .*$/m, "- confirmed: Took over from session agent-b at the user's request; T-001 and T-002 verified.")
+  writeFileSync(planPath, plan)
 }
 
 /** A correct end state for the "replan" scenario: a new plan version, a replan entry, and no reused item ID. */
