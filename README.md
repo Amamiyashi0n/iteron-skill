@@ -75,7 +75,7 @@ node scripts/add-stage.mjs --task <任务ID> --item T-001 \
   --result pass --revision "<提交号或 none>" --complete <目标仓库路径>
 ```
 
-`--complete` 只在 `--result pass` 的条目验证上有效，会把该条目标为 `completed` 并写入 `acceptance_ref`。总验收用 `--overall --criteria "O-1 ..."`。关闭任务时的 `owner`、`next_action` 等字段仍需手工写，写完再运行校验。
+`--complete` 只在 `--result pass` 的条目验证上有效，会把该条目标为 `completed` 并写入 `acceptance_ref`。总验收用 `--overall --criteria "O-1 ..."`。全部条目完成并记录了总验收后，用 `node scripts/close-task.mjs --task <任务ID> <目标仓库路径>` 写入关闭字段，包括状态、`owner`、`next_action`、`overall_acceptance_ref` 和索引行。脚本写完立即运行校验，发现错误就整体回滚，不改动任何文件。还有条目没完成、没有总验收记录、`pending_checks` 或 `delegated` 没清空时，它会拒绝关闭。
 
 ## 校验与开发
 
