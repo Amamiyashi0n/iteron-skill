@@ -3,6 +3,7 @@
   "description": "Iteron skill for DeepSeek Harness: multistage tasks with verifiable milestones, indexed plans, stage evidence, and distilled methods",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -22,7 +23,8 @@
     "templates",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "test": "node --test",

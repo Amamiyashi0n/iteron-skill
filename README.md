@@ -50,6 +50,18 @@ npx skills add Amamiyashi0n/iteron-skill --skill iteron-skill -a claude-code -a 
 
 新任务统一写到 `.agent/`。已有任务如果放在 `agent/`，可以直接查找、续做和校验，索引链接使用实际路径。
 
+## 创建任务
+
+可以用脚手架一次生成任务目录、`plan.md` 和 `agent.md` 索引行，省去手工替换模板占位符。`--criterion` 和 `--item` 可重复；`--item` 的三个字段用 `|` 分隔，依次是需求、预期结果和验收标准。
+
+```sh
+node scripts/new-task.mjs --title "导出批量金额" --goal "导出的每一行都带转换后的金额" \
+  --criterion "导出文件包含全部源数据行" \
+  --item "复现缺失的数据行|能用 feed.csv 复现|用 feed.csv 复现出缺失的数据行" <目标仓库路径>
+```
+
+任务 ID 取 UTC 创建时间，同一秒内重复创建会加 `-2`、`-3` 后缀。脚本生成的 `plan.md` 带 `owner` 认领和第一个续做动作 `start T-001`，生成后应能通过下面的校验。依赖关系、`baseline` 等可选字段需要再手工补充。
+
 ## 校验与开发
 
 在插件仓库目录下运行，需要 Node.js 20 或更高版本。
