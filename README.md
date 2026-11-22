@@ -9,7 +9,7 @@ Iteron 是一个可供 Claude Code、Codex 和 DeepSeek Harness 使用的 Agent 
 
 ### Claude Code、Codex 和其他 Agent
 
-在目标项目根目录运行以下命令，用 [Vercel Skills CLI](https://github.com/vercel-labs/skills) 为 Claude Code 和 Codex 安装 Iteron。
+在目标项目根目录运行以下命令，用 [Vercel Skills CLI](https://github.com/vercel-labs/skills) 为 Claude Code 和 Codex 安装 Iteron。其中 Claude Code 不推荐使用，见上方警告。
 
 ```sh
 npx skills add Amamiyashi0n/iteron-skill --skill iteron-skill -a claude-code -a codex
@@ -19,7 +19,7 @@ npx skills add Amamiyashi0n/iteron-skill --skill iteron-skill -a claude-code -a 
 
 | Agent | 用户级目录 | 项目级目录 | 调用方式 |
 | --- | --- | --- | --- |
-| Claude Code | `~/.claude/skills/iteron-skill/` | `.claude/skills/iteron-skill/` | `/iteron-skill` |
+| Claude Code（不推荐） | `~/.claude/skills/iteron-skill/` | `.claude/skills/iteron-skill/` | `/iteron-skill` |
 | Codex | `~/.agents/skills/iteron-skill/` | `.agents/skills/iteron-skill/` | `$iteron-skill` |
 
 也可以手动将 `SKILL.md`、`references/`、`templates/` 和 `scripts/` 放进对应的 `iteron-skill/` 目录，保留相对路径。项目任务记录仍写入目标项目的 `agent.md` 和 `.agent/`，运行记录校验器需要 Node.js 20 或更高版本。
