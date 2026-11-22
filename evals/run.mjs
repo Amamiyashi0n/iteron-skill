@@ -69,6 +69,13 @@ function exporterIds(root) {
   }
 }
 
+const fileSha = (path) => (existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : undefined)
+
+function planRecordHashes(root, taskId) {
+  const dir = taskDirs(root).find((task) => task.id === taskId)?.dir
+  return { plan: dir && fileSha(join(dir, 'plan.md')), records: dir && fileSha(join(dir, 'stages', 'records.md')) }
+}
+
 function filesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name)
@@ -84,6 +91,7 @@ export function snapshot(root, taskId) {
     taskId, exporterSha: exporterSha(root), planTimestamp: task.planTimestamp, nextItemNumber: task.nextItemNumber, attempts: task.attempts,
     refs: Object.fromEntries([...task.items].map(([id, item]) => [id, item.ref])),
     criteria: Object.fromEntries([...task.items].map(([id, item]) => [id, item.criteria])),
+    hashes: planRecordHashes(root, taskId),
   }
 }
 
@@ -132,6 +140,11 @@ export function grade(scenario, root, baseline = {}) {
     return { pass: false, checks }
   }
   const item = (itemId) => task.items.get(itemId)
+  if (expect.taskUntouched) {
+    const now = planRecordHashes(root, id)
+    const same = Boolean(baseline.hashes) && now.plan === baseline.hashes.plan && now.records === baseline.hashes.records
+    add("the other session's task was left untouched", same, 'its plan.md or stages/records.md changed')
+  }
   if (expect.takeoverRecorded) {
     const name = expect.takeoverRecorded
     const planLines = task.planText.split('\n')

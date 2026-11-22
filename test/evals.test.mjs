@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { goldenFresh, goldenReplan, goldenResume, goldenTakeover } from '../evals/fixtures.mjs'
+import { goldenAlongside, goldenFresh, goldenReplan, goldenResume, goldenTakeover } from '../evals/fixtures.mjs'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { grade, loadScenarios, loadTriggerCases, setup } from '../evals/run.mjs'
 
@@ -166,4 +166,19 @@ test('the baseline can be kept outside the workspace the agent sees', () => {
   assert.throws(() => readFileSync(join(root, '.iteron-eval.json')), /ENOENT/)
   goldenResume(root, baseline.taskId)
   assert.deepEqual(failedChecks('resume', root, baseline), [])
+})
+
+test("new-alongside: a second task passes, while touching the other session's task or doing nothing fails", () => {
+  const idle = freshRoot()
+  const a = setup('new-alongside', idle)
+  assert.ok(failedChecks('new-alongside', idle, a.baseline).includes('there are 2 tasks'))
+  const good = freshRoot()
+  const b = setup('new-alongside', good)
+  goldenAlongside(good)
+  assert.deepEqual(failedChecks('new-alongside', good, b.baseline), [])
+  const bad = freshRoot()
+  const c = setup('new-alongside', bad)
+  goldenAlongside(bad)
+  goldenResume(bad, c.baseline.taskId)
+  assert.ok(failedChecks('new-alongside', bad, c.baseline).includes("the other session's task was left untouched"))
 })

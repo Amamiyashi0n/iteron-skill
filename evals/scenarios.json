@@ -104,5 +104,15 @@
         "T-002"
       ]
     }
+  },
+  {
+    "id": "new-alongside",
+    "title": "另一个会话持有一个任务时，用户要做一件新的事，应另建任务而不是动别人的",
+    "fixture": "owned-by-other",
+    "prompt": "用 Iteron 分阶段给 src/export.js 增加一个汇总功能：导出的最后多打印一行 {\"total\": 所有已导出金额之和}。先实现，再用 feed.csv 验收。",
+    "expect": {
+      "tasks": 2,
+      "taskUntouched": true
+    }
   }
 ]

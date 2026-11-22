@@ -9,7 +9,7 @@ Use the task index to find work and the task plan to resume it. Each plan item d
 
 ## Plan or resume
 
-Find the task in `agent.md`. Keep existing tasks in their recorded `.agent/` or `agent/` directory. Create new tasks under `.agent/` using the [templates](templates/README.md), or run [scripts/new-task.mjs](scripts/new-task.mjs) with `--help` to generate the plan and index row, then add any optional fields by hand. For the first task, follow the [discovery pointer rule](references/task-record.md#discovery-pointer) for the current agent, which asks the user before touching an instruction file. In planning mode, draft the plan in conversation and save it when writes are allowed.
+Find the task in `agent.md`. Keep existing tasks in their recorded `.agent/` or `agent/` directory. Treat a request for a different deliverable as a new task, even when another task for the same project is open. Reuse an existing task only when the user names it or the request continues its goal. Create new tasks under `.agent/` using the [templates](templates/README.md), or run [scripts/new-task.mjs](scripts/new-task.mjs) with `--help` to generate the plan and index row, then add any optional fields by hand. For the first task, follow the [discovery pointer rule](references/task-record.md#discovery-pointer) for the current agent, which asks the user before touching an instruction file. In planning mode, draft the plan in conversation and save it when writes are allowed.
 
 Before drafting a new plan, [search existing methods](references/task-record.md#search-targets-and-methods) with the goal's project and requirement terms. Adopt one only after the checks listed under [distillation](references/task-record.md#distillationnotesmd), and plan its check as a normal item.
 

@@ -136,6 +136,16 @@ export function goldenResume(root, taskId) {
   })
 }
 
+/** A correct end state for the "new-alongside" scenario: a second task is created and the other session's task is left alone. */
+export function goldenAlongside(root) {
+  createTask(root, {
+    title: 'Add an amount total to the export',
+    goal: 'Print the sum of all exported amounts after the last row',
+    criteria: ['The export ends with a line holding the total amount'],
+    items: ['Add the total line|The export ends with a total|The last line of the export holds the sum of the amounts'],
+  }, FIXED)
+}
+
 /** A correct end state for the "owner-conflict" scenario: the user said to continue, so the task is taken over and the old owner is named. */
 export function goldenTakeover(root, taskId) {
   goldenResume(root, taskId)
