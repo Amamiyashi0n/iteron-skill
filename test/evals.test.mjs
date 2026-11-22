@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { goldenFresh, goldenReplan, goldenResume } from '../evals/fixtures.mjs'
+import { writeFileSync } from 'node:fs'
 import { grade, loadScenarios, loadTriggerCases, setup } from '../evals/run.mjs'
 
 const roots = []
@@ -37,17 +39,44 @@ test('scenarios are well formed', () => {
   assert.equal(new Set(scenarios.map((s) => s.id)).size, scenarios.length)
   for (const s of scenarios) {
     assert.ok(s.title && s.prompt && s.expect, s.id)
-    assert.ok([null, 'in-progress'].includes(s.fixture), s.id)
+    assert.ok([null, 'in-progress', 'export-bug'].includes(s.fixture), s.id)
   }
 })
 
-test('a correct fresh run passes and an empty repository fails', () => {
+test('the seeded project really drops the zero-amount rows', () => {
+  const root = freshRoot()
+  setup('fresh', root)
+  const run = spawnSync(process.execPath, ['src/export.js', 'feed.csv'], { cwd: root, encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  const ids = run.stdout.trim().split('\n').map((line) => JSON.parse(line).id)
+  assert.deepEqual(ids, [1, 3, 5])
+})
+
+test('perfect records around an unfixed bug still fail the fresh scenario', () => {
+  const root = freshRoot()
+  goldenFresh(root, { fix: false })
+  const failed = grade(scenario('fresh'), root).checks.filter((c) => !c.ok).map((c) => c.name)
+  assert.deepEqual(failed, ['the exporter prints every row of feed.csv'])
+})
+
+test('changing the exporter fails the replan scenario', () => {
+  const root = freshRoot()
+  const { baseline } = setup('replan', root)
+  goldenReplan(root, baseline.taskId)
+  writeFileSync(join(root, 'src', 'export.js'), '// edited\n')
+  const failed = grade(scenario('replan'), root, baseline).checks.filter((c) => !c.ok).map((c) => c.name)
+  assert.ok(failed.includes('the exporter was not changed yet'), failed.join('; '))
+})
+
+test('a correct fresh run passes and the untouched project fails', () => {
   const good = freshRoot()
   goldenFresh(good)
   const result = grade(scenario('fresh'), good)
   assert.deepEqual(result.checks.filter((c) => !c.ok), [])
   assert.equal(result.pass, true)
-  assert.equal(grade(scenario('fresh'), freshRoot()).pass, false)
+  const untouched = freshRoot()
+  setup('fresh', untouched)
+  assert.equal(grade(scenario('fresh'), untouched).pass, false)
 })
 
 test('a correct resume passes and doing nothing fails', () => {

@@ -2,22 +2,22 @@
   {
     "id": "fresh",
     "title": "从零开始的分阶段任务，做完并通过校验",
-    "fixture": null,
+    "fixture": "export-bug",
     "prompt": "用 Iteron 做这件事：src/export.js 导出时会丢掉金额为 0 的行。先复现，再定位原因并修复，最后用同一份 feed.csv 验收。完成后报告起点、关键发现和最终结果。",
-    "expect": { "tasks": 1, "minItems": 2, "allItemsCompleted": true, "status": "completed" }
+    "expect": { "tasks": 1, "minItems": 2, "allItemsCompleted": true, "status": "completed", "exporterIds": [1, 2, 3, 4, 5] }
   },
   {
     "id": "resume",
     "title": "接手上一个会话留下的任务并继续做完下一个条目",
     "fixture": "in-progress",
     "prompt": "继续任务 2026-01-15_08-30-12。上一个会话已经完成 T-001，请从断点接着做 T-002 并验收。不要重做 T-001。",
-    "expect": { "tasks": 1, "itemsCompleted": ["T-002"], "unchangedRefs": ["T-001"], "attemptsUnchanged": ["T-001"] }
+    "expect": { "tasks": 1, "itemsCompleted": ["T-002"], "unchangedRefs": ["T-001"], "attemptsUnchanged": ["T-001"], "exporterIds": [1, 2, 3, 4, 5] }
   },
   {
     "id": "replan",
     "title": "需求变化后重新规划，保留已验证的结果",
     "fixture": "in-progress",
     "prompt": "任务 2026-01-15_08-30-12 的需求变了：导出现在还要包含 refund 行。请重新规划剩下的步骤，保留已经验证过的结果，并把变化记录下来。先不要开始实现。",
-    "expect": { "tasks": 1, "planTimestampChanged": true, "replanEntry": true, "nextItemNumberNotLower": true, "unchangedRefs": ["T-001"], "attemptsUnchanged": ["T-001"] }
+    "expect": { "tasks": 1, "planTimestampChanged": true, "replanEntry": true, "nextItemNumberNotLower": true, "unchangedRefs": ["T-001"], "attemptsUnchanged": ["T-001"], "exporterUnchanged": true }
   }
 ]

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createTask } from '../scripts/new-task.mjs'
 import { addStage } from '../scripts/add-stage.mjs'
@@ -8,8 +8,41 @@ const FIXED = new Date('2026-01-15T08:30:12Z')
 const taskDir = (root, taskId) => join(root, '.agent', `${taskId}-plan`)
 const replaceLine = (text, pattern, line) => text.replace(pattern, line)
 
+const FEED = 'id,amount\n1,100\n2,0\n3,250\n4,0\n5,75\n'
+const EXPORTER = [
+  "import { readFileSync } from 'node:fs'",
+  '',
+  "const [, , input = 'feed.csv'] = process.argv",
+  "const rows = readFileSync(input, 'utf8').trim().split('\\n').slice(1).map((line) => {",
+  "  const [id, amount] = line.split(',')",
+  '  return { id: Number(id), amount: Number(amount) }',
+  '})',
+  '// Keep only the rows that have an amount.',
+  'const exported = rows.filter((row) => row.amount)',
+  'for (const row of exported) console.log(JSON.stringify(row))',
+  '',
+].join('\n')
+
+/** A tiny project with a real bug: rows whose amount is 0 are dropped from the export. */
+export function seedExportBug(root) {
+  mkdirSync(join(root, 'src'), { recursive: true })
+  writeFileSync(join(root, 'feed.csv'), FEED)
+  writeFileSync(join(root, 'src', 'export.js'), EXPORTER)
+  writeFileSync(join(root, 'package.json'), '{\n  "name": "export-demo",\n  "private": true,\n  "type": "module"\n}\n')
+}
+
+/** Applies the fix a correct run would make: keep rows whose amount is a real number, zero included. */
+export function fixExporter(root) {
+  const path = join(root, 'src', 'export.js')
+  const source = readFileSync(path, 'utf8')
+  const fixed = source.replace('rows.filter((row) => row.amount)', 'rows.filter((row) => Number.isFinite(row.amount))')
+  if (fixed === source) throw new Error('the seeded exporter does not contain the expected filter')
+  writeFileSync(path, fixed)
+}
+
 /** A task whose first item is verified and whose second item is waiting. The owner is released. */
 export function buildInProgress(root) {
+  seedExportBug(root)
   const { taskId } = createTask(root, {
     title: 'Export batch amounts',
     goal: 'Export every batch row with converted amounts',
@@ -56,7 +89,9 @@ export function goldenClose(root, taskId) {
 }
 
 /** A correct end state for the "fresh" scenario. */
-export function goldenFresh(root) {
+export function goldenFresh(root, { fix = true } = {}) {
+  seedExportBug(root)
+  if (fix) fixExporter(root)
   const { taskId } = createTask(root, {
     title: 'Fix dropped zero-amount rows',
     goal: 'Keep rows whose amount is 0 in the export',
@@ -80,6 +115,7 @@ export function goldenFresh(root) {
 
 /** A correct end state for the "resume" scenario. */
 export function goldenResume(root, taskId) {
+  fixExporter(root)
   addStage(root, {
     task: taskId, item: 'T-002', complete: true, result: 'pass',
     delivery: 'Fixed the filter.', subject: 'feed.csv through the fixed exporter',

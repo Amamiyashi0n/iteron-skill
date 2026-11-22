@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkRoot } from '../scripts/check-records.mjs'
-import { buildInProgress } from './fixtures.mjs'
+import { buildInProgress, seedExportBug } from './fixtures.mjs'
 
 const here = (path) => fileURLToPath(new URL(path, import.meta.url))
 const BASELINE = '.iteron-eval.json'
@@ -51,11 +53,27 @@ function readTask(root, id) {
   }
 }
 
+const exporterSha = (root) => {
+  const path = join(root, 'src', 'export.js')
+  return existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : undefined
+}
+
+/** The ids the seeded exporter prints for feed.csv, or null when it fails to run. */
+function exporterIds(root) {
+  const run = spawnSync(process.execPath, ['src/export.js', 'feed.csv'], { cwd: root, encoding: 'utf8', timeout: 20000 })
+  if (run.status !== 0) return null
+  try {
+    return run.stdout.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line).id)
+  } catch {
+    return null
+  }
+}
+
 /** What a scenario needs to remember about the starting state. */
 export function snapshot(root, taskId) {
   const task = readTask(root, taskId)
   return {
-    taskId, planTimestamp: task.planTimestamp, nextItemNumber: task.nextItemNumber, attempts: task.attempts,
+    taskId, exporterSha: exporterSha(root), planTimestamp: task.planTimestamp, nextItemNumber: task.nextItemNumber, attempts: task.attempts,
     refs: Object.fromEntries([...task.items].map(([id, item]) => [id, item.ref])),
   }
 }
@@ -69,6 +87,8 @@ export function setup(scenarioId, root) {
     const { taskId } = buildInProgress(root)
     baseline = snapshot(root, taskId)
     writeFileSync(join(root, BASELINE), `${JSON.stringify(baseline, null, 2)}\n`)
+  } else if (scenario.fixture === 'export-bug') {
+    seedExportBug(root)
   } else if (scenario.fixture !== null) {
     throw new Error(`unknown fixture: ${scenario.fixture}`)
   }
@@ -83,6 +103,12 @@ export function grade(scenario, root, baseline = {}) {
   const errors = checkRoot(root).issues.filter((issue) => issue.level === 'error')
   add('the checker reports no errors', errors.length === 0, errors.map((issue) => `${issue.code} @ ${issue.where}`).join('; '))
   if (expect.tasks !== undefined) add(`there ${expect.tasks === 1 ? 'is exactly 1 task' : `are ${expect.tasks} tasks`}`, tasks.length === expect.tasks, `found ${tasks.length}`)
+
+  if (expect.exporterIds) {
+    const ids = exporterIds(root)
+    add('the exporter prints every row of feed.csv', JSON.stringify(ids) === JSON.stringify(expect.exporterIds), `prints ${ids ? ids.join(',') : 'an error'}`)
+  }
+  if (expect.exporterUnchanged) add('the exporter was not changed yet', Boolean(baseline.exporterSha) && exporterSha(root) === baseline.exporterSha)
 
   const id = baseline.taskId ?? (tasks.length === 1 ? tasks[0].id : undefined)
   const task = id ? readTask(root, id) : undefined
