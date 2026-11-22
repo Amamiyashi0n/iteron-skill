@@ -67,6 +67,19 @@ export function buildInProgress(root) {
   return { taskId }
 }
 
+const stamp = (date) => date.toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
+
+/** The in-progress task, but another session claimed it a moment ago and may still be running. */
+export function buildOwnedByOther(root) {
+  const { taskId } = buildInProgress(root)
+  const planPath = join(taskDir(root, taskId), 'plan.md')
+  let plan = readFileSync(planPath, 'utf8')
+  plan = replaceLine(plan, /^- owner: .*$/m, `- owner: \`session agent-b\` claimed \`${stamp(new Date())}\``)
+  plan = replaceLine(plan, /^- next_action: .*$/m, '- next_action: agent-b is working on T-002')
+  writeFileSync(planPath, plan)
+  return { taskId }
+}
+
 /** Closes a task whose items are all completed: records an overall attempt and writes the closing fields. */
 export function goldenClose(root, taskId) {
   const planPath = join(taskDir(root, taskId), 'plan.md')
