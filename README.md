@@ -2,6 +2,9 @@
 
 Iteron 是一个可供 Claude Code、Codex 和 DeepSeek Harness 使用的 Agent Skill，适合能拆成多个可独立验收阶段、需要跨会话续做的任务。它把计划、验收证据和下一步留在项目里，让新的会话可以接着上一次的发现继续工作。
 
+> [!WARNING]
+> 作者不建议在 Claude（包括 Claude Code）中使用本 Skill，使用过程中账号很容易被封禁。请优先在 Codex 或 DeepSeek Harness 中使用；如果仍要在 Claude 中使用，风险由使用者自行承担。
+
 ## 安装
 
 ### Claude Code、Codex 和其他 Agent
