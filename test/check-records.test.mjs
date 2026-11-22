@@ -395,7 +395,7 @@ test('an unversioned check can pass directly but cannot be reused', () => {
 test('closure accepts a compact citation alongside a new check', () => {
   const files = reuseInOverall(validTask())
   files[PLAN_PATH].splice(files[PLAN_PATH].indexOf('  - O-1: Row count matches the feed.') + 1, 0, '  - O-2: Check export order.')
-  files[RECORDS].push('### Verification Block', '- criteria: O-2 Order', '- subject: amounts.jsonl', '- method: Compare the id sequences.', '- observed: Order matches.', '- result: pass', '- revision: abc1234')
+  files[RECORDS].push('### Verification Block', '- criteria: O-2 Check export order', '- subject: amounts.jsonl', '- method: Compare the id sequences.', '- observed: Order matches.', '- result: pass', '- revision: abc1234')
   assert.deepEqual(codesOf(files), [])
 })
 

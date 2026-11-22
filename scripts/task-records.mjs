@@ -35,6 +35,15 @@ const INDEX_COLUMNS = ['task_id', 'title', 'search_terms', 'status', 'plan_link'
 const PLAN_COLUMNS = ['item_id', 'requirement', 'expected_result', 'depends_on', 'acceptance_criteria', 'status', 'acceptance_ref']
 const STOP_WORDS = new Set(['the', 'a', 'an', 'is', 'are', 'to', 'of', 'in', 'for', 'on', 'and', 'or', 'be', 'it', 'that', 'this', 'with', 'by', 'as', 'at', 'ok', 'yes', 'no'])
 
+function isRealTimestamp(text) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/.exec(text)
+  if (!match) return false
+  const [year, month, day, hour, minute, second] = match.slice(1).map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day &&
+    hour < 24 && minute < 60 && second < 60
+}
+
 const plainText = (value = '') => value.replace(/`/g, '').trim()
 const criterionId = (block) => /^(O-\d+)\b/.exec(block.get('criteria') ?? '')?.[1]
 
@@ -124,7 +133,8 @@ function criteriaCovered(planCriteria, blocks) {
   return blocks.some((block) => {
     const checked = normalizeText((block.get('criteria') ?? '').replace(/^\s*O-\d+\b[:\s-]*/i, ''))
     if (!checked) return false
-    return phraseContained(checked, wanted) || (phraseContained(wanted, checked) && hasSubstantiveToken(checked))
+    return phraseContained(checked, wanted) ||
+      (phraseContained(wanted, checked) && hasSubstantiveToken(checked) && checked.length * 2 >= wanted.length)
   })
 }
 
@@ -166,7 +176,7 @@ function checkOwner(status, fields, location, options, report) {
   }
   if (!OPEN_STATUSES.includes(status) || !name || released) return
   const claim = /\bclaimed\s+(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\b/.exec(text)
-  if (!claim) {
+  if (!claim || !isRealTimestamp(claim[0].replace(/^claimed\s+/, ''))) {
     report('warning', 'owner-claim-time', location, 'owner needs a UTC claim time in yyyy-MM-dd_HH-mm-ss format after "claimed"')
     return
   }
@@ -199,6 +209,12 @@ function checkReplans(planTimestamp, records, recordsPath, location, report) {
 }
 
 function checkDependencies(rows, location, report) {
+  for (const row of rows) {
+    const bad = plainText(row.depends_on ?? '').split(/[\s,;，、]+/).filter((token) => token && !ITEM_ID.test(token) && !emptyField(token))
+    if (bad.length > 0) {
+      report('error', 'depends-malformed', location, `${plainText(row.item_id ?? '')} has depends_on entries that are not item IDs: ${bad.join(', ')}; write IDs such as T-001, or -`)
+    }
+  }
   const items = rows.map((row) => ({ id: plainText(row.item_id ?? ''), status: plainText(row.status ?? ''), deps: [...new Set(parseDependencies(row.depends_on))] }))
   const byId = new Map(items.map((item) => [item.id, item]))
   const graph = new Map()
@@ -385,7 +401,7 @@ function checkTask(id, root, taskLocation, row, report, options = {}) {
   const ownerName = (fields.get('owner') ?? '').replace(/`/g, '').split(' claimed ')[0].trim()
 
   if (value('task_id') !== id) report('error', 'task-id-mismatch', location, `task_id is ${value('task_id') || 'missing'}, expected ${id}`)
-  if (!TASK_ID.test(planTimestamp)) report('error', 'plan-timestamp', location, 'plan_timestamp is missing or not yyyy-MM-dd_HH-mm-ss')
+  if (!TASK_ID.test(planTimestamp) || !isRealTimestamp(planTimestamp)) report('error', 'plan-timestamp', location, 'plan_timestamp is missing or not yyyy-MM-dd_HH-mm-ss')
   if (!TASK_STATUSES.includes(status)) report('error', 'plan-status', location, `status must be one of ${TASK_STATUSES.join(', ')}`)
   for (const key of ['owner', 'next_item_number', 'search_terms', 'overall_acceptance_ref']) {
     if (!fields.has(key)) report('error', 'plan-field-missing', location, `${key} is missing`)
