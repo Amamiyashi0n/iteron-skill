@@ -12,9 +12,10 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const HOME = process.env.ITERON_EVAL_HOME ?? join(homedir(), '.iteron-eval')
 const DSH_HOME = join(HOME, 'dsh-home')
 const FROZEN = join(HOME, 'frozen') // grader + checker from the baseline commit; the optimiser never edits it
@@ -79,7 +80,7 @@ function runSession({ profile, hostWork, sandboxWork, stateDir, prompt, eventsPa
     const started = Date.now()
     const home = homedir()
     for (const sub of ['sessions', 'storages']) mkdirSync(join(stateDir, sub), { recursive: true })
-    const hide = [HOME, join(home, 'iteron-work'), join(home, '.gemini'), join(home, '.dsh'), join(home, '.config', 'iteron-eval'), join(home, '.codex')]
+    const hide = [HOME, REPO_ROOT, join(home, '.gemini'), join(home, '.dsh'), join(home, '.config', 'iteron-eval'), join(home, '.codex')]
       .filter((path) => existsSync(path)).flatMap((path) => ['--tmpfs', path])
     const bwrap = [
       '--dev-bind', '/', '/', '--tmpfs', '/tmp', ...hide,
@@ -115,7 +116,8 @@ function runSession({ profile, hostWork, sandboxWork, stateDir, prompt, eventsPa
 
 /** Paths a run may touch: its work dir, the installed skill, and ordinary system locations. */
 function auditEvents(events, workDir, installed) {
-  const forbidden = [/iteron-work/, /\.iteron-eval\/(runs|frozen|pkgs|heldout)/, /baseline\.json/, /\/evals\//, /scenarios\.json/, /fixtures\.mjs/]
+  const repoPattern = new RegExp(REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const forbidden = [repoPattern, /\.iteron-eval\/(runs|frozen|pkgs|heldout)/, /(?:^|[\s"'/])baseline\.json\b/, /\/evals\//, /scenarios\.json/, /fixtures\.mjs/]
   const allowedPrefixes = [workDir, installed, '/usr/', '/bin/', '/etc/', '/proc/', '/dev/null']
   const violations = []
   const outside = new Set()
