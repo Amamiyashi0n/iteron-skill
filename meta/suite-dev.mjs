@@ -161,7 +161,8 @@ const d1 = {
     const bad = []
     for (const [itemId, item] of task?.items ?? []) {
       const anchor = /#(stage-[^)\s]+)/.exec(item.ref ?? '')?.[1]
-      const section = sections(task.records).find((s) => s.body.includes(`name="${anchor}"`) || s.heading.endsWith(`/ ${itemId} / ${anchor?.split('-').pop()}`))
+      // The anchor line sits above its heading, so match the heading itself.
+      const section = sections(task.records).find((s) => anchor && `stage-${s.heading.replace(/ \/ /g, '-').toLowerCase()}` === anchor)
       const revision = /^- revision: (.*)$/m.exec(section?.body ?? '')?.[1] ?? ''
       const hashes = revision.match(/\b[0-9a-f]{7,40}\b/g) ?? []
       const real = hashes.some((h) => spawnSync('git', ['cat-file', '-e', `${h}^{commit}`], { cwd: root }).status === 0) || /sha256/i.test(revision)
