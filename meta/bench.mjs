@@ -68,12 +68,28 @@ async function loadSuite(suitePath) {
   return scenarios
 }
 
-function runSession({ profile, cwd, prompt, eventsPath, killAfterToolCalls }) {
+/**
+ * Runs one agent session inside bubblewrap. Everything an agent could use to peek at the
+ * expected results is hidden behind empty tmpfs mounts: the bench home (runs, frozen grader,
+ * held-out suite, other profiles), the repo, other agents' state and the user's dsh sessions.
+ * The project is mounted at a neutral path, and session state is per run.
+ */
+function runSession({ profile, hostWork, sandboxWork, stateDir, prompt, eventsPath, killAfterToolCalls }) {
   return new Promise((done) => {
     const started = Date.now()
-    const child = spawn('dsh', ['--profile', profile, '--json', '--permission-mode', 'workspace-write', '--approval-policy', 'never', '-'], {
-      cwd, env: { ...process.env, DSH_HOME, DEEPSEEK_API_KEY: readFileSync(KEY_FILE, 'utf8').trim() },
-    })
+    const home = homedir()
+    for (const sub of ['sessions', 'storages']) mkdirSync(join(stateDir, sub), { recursive: true })
+    const hide = [HOME, join(home, 'iteron-work'), join(home, '.gemini'), join(home, '.dsh'), join(home, '.config', 'iteron-eval'), join(home, '.codex')]
+      .filter((path) => existsSync(path)).flatMap((path) => ['--tmpfs', path])
+    const bwrap = [
+      '--dev-bind', '/', '/', '--tmpfs', '/tmp', ...hide,
+      '--bind', join(DSH_HOME, 'profiles', profile), join(DSH_HOME, 'profiles', profile),
+      '--bind', join(stateDir, 'sessions'), join(DSH_HOME, 'sessions'),
+      '--bind', join(stateDir, 'storages'), join(DSH_HOME, 'storages'),
+      '--bind', hostWork, sandboxWork, '--chdir', sandboxWork, '--die-with-parent',
+      'dsh', '--profile', profile, '--json', '--permission-mode', 'workspace-write', '--approval-policy', 'never', '-',
+    ]
+    const child = spawn('bwrap', bwrap, { env: { ...process.env, DSH_HOME, DEEPSEEK_API_KEY: readFileSync(KEY_FILE, 'utf8').trim() } })
     let out = ''
     let toolCalls = 0
     let killed = null
@@ -100,7 +116,7 @@ function runSession({ profile, cwd, prompt, eventsPath, killAfterToolCalls }) {
 /** Paths a run may touch: its work dir, the installed skill, and ordinary system locations. */
 function auditEvents(events, workDir, installed) {
   const forbidden = [/iteron-work/, /\.iteron-eval\/(runs|frozen|pkgs|heldout)/, /baseline\.json/, /\/evals\//, /scenarios\.json/, /fixtures\.mjs/]
-  const allowedPrefixes = [workDir, installed, '/usr/', '/bin/', '/etc/', '/proc/', '/dev/null', '/tmp/']
+  const allowedPrefixes = [workDir, installed, '/usr/', '/bin/', '/etc/', '/proc/', '/dev/null']
   const violations = []
   const outside = new Set()
   for (const event of events) {
@@ -141,11 +157,12 @@ async function runOne({ scenario, index, batchDir, profile, installed }) {
   const baseline = (await scenario.setup(work, baselineFile)) ?? {}
   writeFileSync(baselineFile, JSON.stringify(baseline, null, 2))
   const sessions = []
+  const sandboxWork = `/tmp/w${Math.random().toString(16).slice(2, 8)}/project`
   for (const [i, session] of scenario.sessions.entries()) {
     const eventsPath = join(runDir, `events-${i + 1}.jsonl`)
-    const result = await runSession({ profile, cwd: work, prompt: session.prompt, eventsPath, killAfterToolCalls: session.killAfterToolCalls })
+    const result = await runSession({ profile, hostWork: work, sandboxWork, stateDir: join(runDir, 'dsh-state'), prompt: session.prompt, eventsPath, killAfterToolCalls: session.killAfterToolCalls })
     const events = parseEvents(eventsPath)
-    sessions.push({ ...result, ...summarise(events), audit: auditEvents(events, work, installed) })
+    sessions.push({ ...result, ...summarise(events), audit: auditEvents(events, sandboxWork, installed) })
   }
   let graded
   try {
