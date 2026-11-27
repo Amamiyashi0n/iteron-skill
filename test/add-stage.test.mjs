@@ -131,3 +131,54 @@ test('the CLI records an attempt and rejects bad flags', () => {
     assert.deepEqual(errors(root, taskId), [])
   })
 })
+
+test('an overall attempt supports repeatable --criteria, --reuse, and --attempt append', () => {
+  const twoCriteria = {
+    ...base,
+    criteria: [
+      'The export contains every source row',
+      'Missing row is reproduced with feed.csv',
+      'All totals match the reference ledger',
+    ],
+  }
+  withTask((root, taskId) => {
+    const t1 = addStage(root, { ...stage, task: taskId, item: 'T-001', complete: true })
+    addStage(root, { ...stage, task: taskId, item: 'T-002', complete: true })
+
+    const first = addStage(root, {
+      ...stage,
+      task: taskId,
+      overall: true,
+      criteria: ['O-1 The export contains every source row'],
+      reuse: [`O-2: [T-001 / 1](#${t1.anchor}) — feed.csv and filter logic unchanged`],
+    })
+    assert.equal(first.attempt, 1)
+    assert.equal(first.appended, undefined)
+
+    const appended = addStage(root, {
+      ...stage,
+      task: taskId,
+      overall: true,
+      attempt: 1,
+      criteria: ['O-3 All totals match the reference ledger'],
+    })
+    assert.equal(appended.attempt, 1)
+    assert.equal(appended.appended, true)
+
+    const records = readFileSync(join(root, '.agent', `${taskId}-plan`, 'stages', 'records.md'), 'utf8')
+    assert.equal((records.match(/^## 2026-01-15_08-30-12 \/ overall \/ 1$/gm) ?? []).length, 1)
+    assert.match(records, /- criteria: O-1 The export contains every source row/)
+    assert.match(records, /- O-2: \[T-001 \/ 1\]\(#stage-2026-01-15_08-30-12-t-001-1\) — feed\.csv/)
+    assert.match(records, /- criteria: O-3 All totals match the reference ledger/)
+    assert.deepEqual(errors(root, taskId), [])
+  }, twoCriteria)
+})
+
+test('--attempt and --reuse reject invalid usage', () => {
+  withTask((root, taskId) => {
+    assert.throws(() => addStage(root, { ...stage, task: taskId, item: 'T-001', attempt: 1 }), /--attempt/)
+    assert.throws(() => addStage(root, { ...stage, task: taskId, item: 'T-001', reuse: ['O-1: [T-001 / 1](#stage-x) — ok'] }), /--reuse/)
+    assert.throws(() => addStage(root, { ...stage, task: taskId, overall: true, reuse: ['O-1 bad format'] }), /--reuse/)
+    assert.throws(() => addStage(root, { ...stage, task: taskId, overall: true, attempt: 9, criteria: ['O-1 The export contains every source row'] }), /does not exist/)
+  })
+})
