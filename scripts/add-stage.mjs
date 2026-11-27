@@ -25,6 +25,8 @@ const USAGE = [
   '  --revision <text>       Exact state checked, such as a commit or "none" (required)',
   '  --checked-by <text>     Who or what ran the check',
   '  --evidence <text>       Link to a log, report or artifact',
+  '  --applied-distillation <link>   Distilled method used in this attempt, as a markdown link to its anchor',
+  '                          (add-method prints it; from another task: ../../<task_id>-plan/distillation/notes.md#<anchor>)',
   '  --complete              With --result pass on an item: mark the item completed and set acceptance_ref',
   '  --json                  Print the recorded attempt as JSON',
   '  -h, --help              Show this help message',
@@ -111,6 +113,7 @@ export function addStage(root, options) {
     `## ${planTimestamp} / ${subject} / ${attempt}`,
     '',
     `- delivery: ${clean(options.delivery)}`,
+    ...(options.appliedDistillation ? [`- applied_distillation: ${clean(options.appliedDistillation)}`] : []),
     '',
     '### Verification Block',
     '',
@@ -146,7 +149,7 @@ function parseArgs(args) {
   const valueFlags = {
     '--task': 'task', '--item': 'item', '--delivery': 'delivery', '--criteria': 'criteria', '--subject': 'subject',
     '--method': 'method', '--observed': 'observed', '--result': 'result', '--revision': 'revision',
-    '--checked-by': 'checkedBy', '--evidence': 'evidence',
+    '--checked-by': 'checkedBy', '--evidence': 'evidence', '--applied-distillation': 'appliedDistillation',
   }
   const positionals = []
   for (let i = 0; i < args.length; i++) {

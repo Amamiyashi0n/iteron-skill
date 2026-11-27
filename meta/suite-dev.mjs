@@ -37,6 +37,13 @@ const write = (root, path, text) => {
   mkdirSync(join(root, path, '..'), { recursive: true })
   writeFileSync(join(root, path), text)
 }
+/** Graders feed hidden input through the same file name the prompt names, so hard-coded paths and argv both work. */
+function withSwapped(root, file, content, fn) {
+  const path = join(root, file)
+  const original = existsSync(path) ? readFileSync(path) : null
+  writeFileSync(path, content)
+  try { return fn() } finally { if (original === null) spawnSync('rm', ['-f', path]); else writeFileSync(path, original) }
+}
 const node = (root, args, input) => spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8', timeout: 20000, input })
 
 function taskDirs(root) {
@@ -139,9 +146,7 @@ const d1 = {
   grade(root, baseline) {
     const g = grader()
     const csv = ['sku,name,qty,price', ...HIDDEN_ITEMS.map(([sku, name, qty, price]) => [sku, `"${name.replaceAll('"', '""')}"`, qty, price].join(','))].join('\n') + '\n'
-    writeFileSync(join(root, '.hidden-items.csv'), csv)
-    const run = node(root, ['src/report.js', '.hidden-items.csv'])
-    spawnSync('rm', ['-f', join(root, '.hidden-items.csv')])
+    const run = withSwapped(root, 'items.csv', csv, () => node(root, ['src/report.js', 'items.csv']))
     const got = run.status === 0 ? run.stdout.trim().split('\n') : [`error: ${run.stderr}`]
     g.add('report is correct on hidden items (quoted commas, cents)', JSON.stringify(got) === JSON.stringify(d1Expected()), got.join(' / '))
     checker(root, g.add)
@@ -225,9 +230,7 @@ const d3 = {
   grade(root) {
     const g = grader()
     const hidden = 'Zed@x.io\nzed@x.io\n\n  amy@x.io\nAMY@X.IO  \nbo@x.io\nZED@X.IO\n'
-    writeFileSync(join(root, '.hidden-emails.txt'), hidden)
-    const run = node(root, ['src/dedupe.js', '.hidden-emails.txt'])
-    spawnSync('rm', ['-f', join(root, '.hidden-emails.txt')])
+    const run = withSwapped(root, 'emails.txt', hidden, () => node(root, ['src/dedupe.js', 'emails.txt']))
     const got = run.status === 0 ? run.stdout.trim().split('\n') : [`error: ${run.stderr}`]
     g.add('dedupe is correct on hidden input', JSON.stringify(got) === JSON.stringify(['zed@x.io', 'amy@x.io', 'bo@x.io']), got.join(','))
     checker(root, g.add)
@@ -291,9 +294,7 @@ const d4 = {
   grade(root, baseline) {
     const g = grader()
     const hidden = 'id,date,amount\n1,02/01/2026,7\n2,11/02/2026,3\n3,01/02/2026,4\n4,12/12/2025,9\n'
-    writeFileSync(join(root, '.hidden-invoices.csv'), hidden)
-    let run = node(root, ['src/monthly.js', '.hidden-invoices.csv'])
-    spawnSync('rm', ['-f', join(root, '.hidden-invoices.csv')])
+    const run = withSwapped(root, 'invoices.csv', hidden, () => node(root, ['src/monthly.js', 'invoices.csv']))
     let got
     try { got = run.stdout.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) } catch { got = run.stdout }
     const want = [{ month: '2025-12', total: 9 }, { month: '2026-01', total: 7 }, { month: '2026-02', total: 7 }]

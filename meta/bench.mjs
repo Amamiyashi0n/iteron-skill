@@ -242,6 +242,26 @@ async function main(args) {
     console.log(report(args.slice(1).filter((a) => !a.startsWith('--')).map((dir) => resolve(dir))))
     return 0
   }
+  if (command === 'regrade') {
+    // Re-run the (fixed) graders on finished runs without calling the agent again.
+    const suite = await loadSuite(arg(args, 'suite'))
+    const batchDir = resolve(args[1])
+    for (const entry of readdirSync(batchDir)) {
+      const path = join(batchDir, entry, 'result.json')
+      if (!existsSync(path)) continue
+      const result = JSON.parse(readFileSync(path, 'utf8'))
+      const scenario = suite.find((s) => s.id === result.scenario)
+      if (!scenario) continue
+      const baseline = JSON.parse(readFileSync(join(batchDir, entry, 'baseline.json'), 'utf8'))
+      const graded = await scenario.grade(join(batchDir, entry, 'work'), baseline)
+      if (graded.pass !== result.pass) console.log(`${entry}: ${result.pass ? 'PASS' : 'FAIL'} -> ${graded.pass ? 'PASS' : 'FAIL'}`)
+      writeFileSync(path, JSON.stringify({ ...result, pass: graded.pass, checks: graded.checks, regraded: true }, null, 2))
+    }
+    const table = report([batchDir])
+    writeFileSync(join(batchDir, 'report.md'), `${table}\n`)
+    console.log(table)
+    return 0
+  }
   if (command !== 'run') {
     console.error('usage: bench.mjs run --variant <label> [--pack <dir>] --scenarios <ids|all> [--suite <module>] [--n 4] [--jobs 4] | report <batchDir...>')
     return 2

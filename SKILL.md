@@ -7,6 +7,21 @@ description: "Plan and execute work that splits into independently verifiable st
 
 Use the task index to find work and the task plan to resume it. Each plan item describes a deliverable and its acceptance criteria. Each verification attempt records what was actually checked.
 
+## Write records with the scripts
+
+The scripts in the `scripts/` directory next to this `SKILL.md` write records in the exact format the checker expects. Run them with Node 20 or later, passing the project root as the last argument. You do not need to read their source or the checker's; each prints its options with `--help`, and the checker's codes are explained in [resolving checker findings](references/task-record.md#resolving-checker-findings).
+
+| Step | Command |
+| --- | --- |
+| Create a task and its index row | `new-task.mjs --title … --goal … --criterion "…" --item "requirement\|expected result\|acceptance criteria[\|T-001]" <root>` |
+| Claim, release or move the resume point | `update-plan.mjs --task <id> [--claim <session> \| --release] [--confirmed …] [--pending …] [--next …] [--item T-002 --status in_progress] <root>` |
+| Record a check of an item | `add-stage.mjs --task <id> --item T-001 --delivery … --subject … --method … --observed … --result pass\|fail\|unverified --revision "<commit or sha256 of the checked files>" [--complete] [--applied-distillation <link>] <root>` |
+| Record the overall check | `add-stage.mjs --task <id> --overall --criteria "O-1 <the plan's wording>" … <root>` (one attempt per criterion, or reuse lines as in [overall verification](references/task-record.md#overall-verification)) |
+| Distil a verified method | `add-method.mjs --task <id> --item T-001 --title … --applies-when … --route … --check … --search-terms … <root>` |
+| Close and check | `close-task.mjs --task <id> <root>`, then `check-records.mjs <root> <id>` |
+
+`--complete` marks the item completed and links it from `acceptance_ref`. Write by hand only what no script covers, such as a replan entry, reused overall evidence or a takeover note, then run the checker.
+
 ## Plan or resume
 
 Find the task in `agent.md`. Keep existing tasks in their recorded `.agent/` or `agent/` directory. Treat a request for a different deliverable as a new task, even when another task for the same project is open. Reuse an existing task only when the user names it or the request continues its goal. Create new tasks under `.agent/` using the [templates](templates/README.md), or run [scripts/new-task.mjs](scripts/new-task.mjs) with `--help` to generate the plan and index row, then add any optional fields by hand. For the first task, follow the [discovery pointer rule](references/task-record.md#discovery-pointer) for the current agent, which asks the user before touching an instruction file. In planning mode, draft the plan in conversation and save it when writes are allowed.

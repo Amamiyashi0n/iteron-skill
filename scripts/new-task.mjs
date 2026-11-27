@@ -96,7 +96,7 @@ export function createTask(root, options, now = new Date()) {
     `- constraints: ${clean(options.constraints ?? 'none')}`,
     ...(options.baseline ? [`- baseline: ${clean(options.baseline)}`] : []),
     '- overall_acceptance:',
-    ...criteria.map((c, i) => `  - O-${i + 1}: ${clean(c)}`),
+    ...criteria.map((c, i) => `  - O-${i + 1}: ${clean(c).replace(/^O-\d+\s*[:：.-]?\s*/, '')}`),
     '- overall_acceptance_ref: -',
     '',
     '## Resume Point',
