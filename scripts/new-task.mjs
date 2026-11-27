@@ -2,6 +2,16 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkRoot } from './task-records.mjs'
+/** One line the caller can act on without running the checker separately. */
+function checkSummary(root, taskId) {
+  const issues = checkRoot(root, taskId).issues
+  const errors = issues.filter((issue) => issue.level === 'error')
+  const warnings = issues.filter((issue) => issue.level === 'warning')
+  const list = (xs) => xs.slice(0, 6).map((issue) => `${issue.code} (${issue.message})`).join('; ')
+  return `check: ${errors.length} error(s)${errors.length ? ` — ${list(errors)}` : ''}, ${warnings.length} warning(s)${warnings.length ? ` — ${list(warnings)}` : ''}`
+}
+
 
 const INDEX_HEADER = [
   '# Task Index',
@@ -163,7 +173,7 @@ export function main(args) {
   try {
     const result = createTask(parsed.root, parsed)
     if (parsed.json) console.log(JSON.stringify(result, null, 2))
-    else console.log(`Created task ${result.taskId} with ${result.items} item(s): ${result.planPath}`)
+    else console.log(`Created task ${result.taskId} with ${result.items} item(s): ${result.planPath}\n${checkSummary(parsed.root, result.taskId)}`)
     return 0
   } catch (error) {
     console.error(`ERROR: ${error.message}\n\n${USAGE}`)

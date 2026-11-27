@@ -20,7 +20,15 @@ The scripts in the `scripts/` directory next to this `SKILL.md` write records in
 | Distil a verified method | `add-method.mjs --task <id> --item T-001 --title … --applies-when … --route … --check … --search-terms … <root>` |
 | Close and check | `close-task.mjs --task <id> <root>`, then `check-records.mjs <root> <id>` |
 
-`--complete` marks the item completed and links it from `acceptance_ref`. Write by hand only what no script covers, such as a replan entry, reused overall evidence or a takeover note, then run the checker.
+`--complete` marks the item completed and links it from `acceptance_ref`. Write by hand only what no script covers, such as a replan entry, reused overall evidence or a takeover note, then run the checker. Every script that writes a record prints the checker's result for that task, so read that line instead of re-reading the files.
+
+What the checker accepts, so you never need to read its source:
+
+- An item is completed when `acceptance_ref` links its own latest passing attempt in the current plan version, and that attempt's `criteria` contains the plan's acceptance wording (case and punctuation are ignored) and has `subject`, `revision`, `method` and `observed`.
+- `revision` holds a literal value: a commit, file hashes, or `none`. Evidence recorded with `revision: none` cannot be reused later.
+- Attempts are numbered 1, 2, 3 per item and plan version. Never rewrite an attempt; append a new one.
+- A task closes when every item is completed and a passing overall attempt in the current plan version covers each `O-n`: either its own Verification Block whose `criteria` starts with `O-n` and the plan's wording, or a line `- O-n: [item attempt](#stage-…) — why that evidence still applies`. `close-task.mjs` writes the remaining closure fields.
+- A replan needs a new `plan_timestamp` and a `## <plan_timestamp> / replan` entry in `stages/records.md`.
 
 ## Plan or resume
 
