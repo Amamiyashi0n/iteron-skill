@@ -72,7 +72,12 @@ export function updatePlan(root, options, now = new Date()) {
   let plan = toLf(raw)
   const changed = []
 
+  let replacedOwner
   if (options.claim) {
+    const prev = /^- owner: (.*)$/m.exec(plan)?.[1]?.trim()
+    if (prev && !/^`?none`?$/i.test(prev) && !prev.startsWith(`\`${clean(options.claim)}\``)) {
+      replacedOwner = prev
+    }
     plan = setField(plan, 'owner', `\`${clean(options.claim)}\` claimed \`${formatTimestamp(now)}\``)
     changed.push('owner')
   }
@@ -145,7 +150,7 @@ export function updatePlan(root, options, now = new Date()) {
   if (changed.length === 0) throw new Error('nothing to change; pass at least one option such as --next or --claim')
   writeFileSync(planPath, withEol(plan, raw.includes('\r\n')))
   if (indexNext !== undefined) writeFileSync(indexPath, indexNext)
-  return { taskId: options.task, changed }
+  return { taskId: options.task, changed, ...(replacedOwner ? { replacedOwner } : {}) }
 }
 
 function parseArgs(args) {
@@ -198,7 +203,10 @@ export function main(args) {
   try {
     const result = updatePlan(parsed.root, parsed)
     if (parsed.json) console.log(JSON.stringify(result, null, 2))
-    else console.log(`Updated ${result.taskId}: ${result.changed.join(', ')}\n${checkSummary(parsed.root, result.taskId)}`)
+    else {
+      const takeover = result.replacedOwner ? `\nnote: replaced previous owner ${result.replacedOwner}; keep the takeover note (naming that previous owner) in a durable record rather than overwriting it in confirmed` : ''
+      console.log(`Updated ${result.taskId}: ${result.changed.join(', ')}${takeover}\n${checkSummary(parsed.root, result.taskId)}`)
+    }
     return 0
   } catch (error) {
     console.error(`ERROR: ${error.message}`)
