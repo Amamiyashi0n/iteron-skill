@@ -13,14 +13,14 @@ The scripts in the `scripts/` directory next to this `SKILL.md` write records in
 
 | Step | Command |
 | --- | --- |
-| Create a task and its index row | `new-task.mjs --title … --goal … --criterion "…" --item "requirement\|expected result\|acceptance criteria[\|T-001]" <root>` |
+| Create a task and its index row | `new-task.mjs --title … --goal … --criterion "…" --item "requirement\|expected result\|acceptance criteria[\|T-001]" [--baseline …] [--search-terms …] <root>` |
 | Claim, release or move the resume point | `update-plan.mjs --task <id> [--claim <session> \| --release] [--confirmed …] [--pending …] [--next …] [--item T-002 --status in_progress] <root>` |
-| Record a check of an item | `add-stage.mjs --task <id> --item T-001 --delivery … --subject … --method … --observed … --result pass\|fail\|unverified --revision "<commit or sha256 of the checked files>" [--complete] [--applied-distillation <link>] <root>` |
-| Record the overall check | `add-stage.mjs --task <id> --overall --criteria "O-1 <the plan's wording>" … <root>` (one attempt per criterion, or reuse lines as in [overall verification](references/task-record.md#overall-verification)) |
+| Record a check of an item | `add-stage.mjs --task <id> --item T-001 --delivery … --subject … --method … --observed … --result pass\|fail\|unverified --revision "<commit or sha256>" [--complete] [--checked-by …] [--applied-distillation <link>] <root>` (`--criteria` defaults to the plan row) |
+| Record the overall check | `add-stage.mjs --task <id> --overall --delivery … [--criteria "O-1 <plan wording>" --subject … --method … --observed … --result pass --revision …] [--reuse "O-2: [T-001 / 1](#stage-…) — why still valid"] [--attempt <n>] <root>` (cover every `O-n` in **one** overall attempt: repeat `--criteria`, repeat `--reuse`, or pass `--attempt <n>` to append another check to the same attempt) |
 | Distil a verified method | `add-method.mjs --task <id> --item T-001 --title … --applies-when … --route … --check … --search-terms … <root>` |
-| Close and check | `close-task.mjs --task <id> <root>`, then `check-records.mjs <root> <id>` |
+| Close and check | `close-task.mjs --task <id> <root>` (runs the single-task check and rolls back on any error; run `check-records.mjs <root> <id>` after hand edits) |
 
-`--complete` marks the item completed and links it from `acceptance_ref`. Write by hand only what no script covers, such as a replan entry, reused overall evidence or a takeover note, then run the checker. Every script that writes a record prints the checker's result for that task, so read that line instead of re-reading the files.
+`--complete` marks the item completed and links it from `acceptance_ref`. Write by hand only what no script covers, such as a replan entry or a takeover note, then run `check-records.mjs`. Every script prints the checker's result for that task, so read that line instead of re-reading the files.
 
 What the checker accepts, so you never need to read its source:
 

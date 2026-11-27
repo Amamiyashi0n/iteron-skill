@@ -142,7 +142,11 @@ export function main(args) {
   try {
     const result = closeTask(parsed.root, parsed)
     if (parsed.json) console.log(JSON.stringify(result, null, 2))
-    else console.log(`Closed ${result.taskId} citing overall attempt ${result.overallAttempt}.`)
+    else {
+      const warnings = checkRoot(parsed.root, result.taskId).issues.filter((issue) => issue.level === 'warning')
+      const list = warnings.slice(0, 6).map((issue) => `${issue.code} (${issue.message})`).join('; ')
+      console.log(`Closed ${result.taskId} citing overall attempt ${result.overallAttempt}.\ncheck: 0 error(s), ${warnings.length} warning(s)${warnings.length ? ` — ${list}` : ''}`)
+    }
     return 0
   } catch (error) {
     console.error(`ERROR: ${error.message}`)

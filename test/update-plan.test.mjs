@@ -92,3 +92,48 @@ test('add-method only distils from a completed item', () => {
     assert.throws(() => addMethod(root, { task: taskId, item: 'T-001', title: 't', appliesWhen: 'a', route: 'r', check: 'c', searchTerms: 's' }), /not completed/)
   })
 })
+
+test('add-stage --overall supports multi-criteria, --reuse, and --attempt appending', () => {
+  const root = mkdtempSync(join(tmpdir(), 'iteron-overall-'))
+  try {
+    const { taskId } = createTask(root, {
+      ...base,
+      criteria: ['Every source row is exported', 'Totals match reference', 'No errors printed'],
+    }, fixed)
+    const t1 = addStage(root, { ...stage, task: taskId, item: 'T-001', complete: true })
+    const t2 = addStage(root, { ...stage, task: taskId, item: 'T-002', complete: true })
+
+    // Mix direct check + reuse in one overall attempt, then append a third criterion to the same attempt.
+    const o1 = addStage(root, {
+      ...stage, task: taskId, overall: true,
+      criteria: ['O-2 Totals match reference'],
+      reuse: [`O-1: [T-001 / 1](#${t1.anchor}) — checked inputs unchanged`],
+    })
+    assert.equal(o1.attempt, 1)
+    const appended = addStage(root, {
+      ...stage, task: taskId, overall: true, attempt: 1,
+      criteria: ['O-3 No errors printed'],
+    })
+    assert.equal(appended.attempt, 1)
+    assert.equal(appended.appended, true)
+    closeTask(root, { task: taskId })
+    assert.deepEqual(errors(root, taskId), [])
+
+    // Reuse-only overall attempt needs no subject/method/observed/revision/result.
+    const second = createTask(root, { ...base, title: 'Reuse only', criteria: ['Row is reproduced'] }, new Date('2026-01-16T08:00:00Z')).taskId
+    const s1 = addStage(root, { ...stage, task: second, item: 'T-001', complete: true })
+    addStage(root, { ...stage, task: second, item: 'T-002', complete: true })
+    addStage(root, { task: second, overall: true, delivery: 'Final delivery.', reuse: [`O-1: [T-001 / 1](#${s1.anchor}) — inputs unchanged`] })
+    closeTask(root, { task: second })
+    assert.deepEqual(errors(root, second), [])
+
+    // Bad flags are rejected.
+    assert.throws(() => addStage(root, { ...stage, task: second, item: 'T-001', reuse: ['O-1: [x](#stage-a) — ok'] }), /--reuse can only/)
+    assert.throws(() => addStage(root, { ...stage, task: second, item: 'T-001', attempt: 1 }), /--attempt can only/)
+    assert.throws(() => addStage(root, { ...stage, task: second, overall: true, attempt: 9, criteria: 'O-1 x' }), /does not exist/)
+    assert.throws(() => addStage(root, { task: second, overall: true, delivery: 'd', reuse: ['bad reuse'] }), /--reuse must look like/)
+    assert.ok(t2.anchor)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

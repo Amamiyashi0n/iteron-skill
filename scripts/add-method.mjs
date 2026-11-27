@@ -1,8 +1,17 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkRoot } from './task-records.mjs'
 import { updatePlan } from './update-plan.mjs'
+
+function checkSummary(root, taskId) {
+  const issues = checkRoot(root, taskId).issues
+  const errors = issues.filter((issue) => issue.level === 'error')
+  const warnings = issues.filter((issue) => issue.level === 'warning')
+  const list = (xs) => xs.slice(0, 6).map((issue) => `${issue.code} (${issue.message})`).join('; ')
+  return `check: ${errors.length} error(s)${errors.length ? ` — ${list(errors)}` : ''}, ${warnings.length} warning(s)${warnings.length ? ` — ${list(warnings)}` : ''}`
+}
 
 const USAGE = [
   'Usage: node scripts/add-method.mjs [options] [root]',
@@ -85,7 +94,8 @@ export function addMethod(root, options) {
   } catch (error) {
     if (!/nothing to change/.test(error.message)) throw error
   }
-  const link = `[${planTimestamp} / ${options.item} / M-${n}](../../${options.task}-plan/distillation/notes.md#${anchor})`
+  const rel = relative(join(root, '.agent', 'x-plan', 'stages'), notesPath).replaceAll('\\', '/')
+  const link = `[${planTimestamp} / ${options.item} / M-${n}](${rel}#${anchor})`
   return { taskId: options.task, anchor, notesPath, link }
 }
 
@@ -125,7 +135,7 @@ export function main(args) {
   try {
     const result = addMethod(parsed.root, parsed)
     if (parsed.json) console.log(JSON.stringify(result, null, 2))
-    else console.log(`Recorded ${result.anchor}. Cite it from another task's stage with add-stage --applied-distillation ${result.link}`)
+    else console.log(`Recorded ${result.anchor}. Cite it from another task's stage with add-stage --applied-distillation ${result.link}\n${checkSummary(parsed.root, result.taskId)}`)
     return 0
   } catch (error) {
     console.error(`ERROR: ${error.message}`)
