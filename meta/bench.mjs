@@ -20,6 +20,7 @@ const DSH_HOME = join(HOME, 'dsh-home')
 const FROZEN = join(HOME, 'frozen') // grader + checker from the baseline commit; the optimiser never edits it
 const KEY_FILE = join(homedir(), '.config', 'iteron-eval', 'deepseek.key')
 const TEMPLATE_PROFILE = join(DSH_HOME, 'profiles', 'iteron-eval')
+const BLIND = process.argv.includes('--blind') // held-out: print only pass/fail counts, never check names
 const SESSION_TIMEOUT_MS = Number(process.env.ITERON_SESSION_TIMEOUT_MS ?? 20 * 60 * 1000)
 
 const arg = (args, name, fallback) => {
@@ -156,7 +157,7 @@ async function runOne({ scenario, index, batchDir, profile, installed }) {
   const record = { scenario: scenario.id, index, pass: graded.pass, valid, checks: graded.checks, sessions }
   writeFileSync(join(runDir, 'result.json'), JSON.stringify(record, null, 2))
   const failed = graded.checks.filter((check) => !check.ok).map((check) => check.name)
-  console.log(`${valid ? '' : '[INVALID] '}${graded.pass ? 'PASS' : 'FAIL'}  ${scenario.id}#${index}  ${Math.round(sessions.reduce((a, s) => a + s.ms, 0) / 1000)}s${failed.length ? `  -> ${failed.join('; ')}` : ''}`)
+  console.log(`${valid ? '' : '[INVALID] '}${graded.pass ? 'PASS' : 'FAIL'}  ${scenario.id}#${index}  ${Math.round(sessions.reduce((a, s) => a + s.ms, 0) / 1000)}s${failed.length && !BLIND ? `  -> ${failed.join('; ')}` : ''}`)
   return record
 }
 
@@ -204,7 +205,7 @@ export function report(batchDirs) {
     const [lo, hi] = wilson(row.pass, row.n)
     const sorted = [...row.tokens].sort((a, b) => a - b)
     const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0
-    lines.push(`| ${row.variant} | ${row.scenario} | ${row.pass}/${row.n} | ${(lo * 100).toFixed(0)}–${(hi * 100).toFixed(0)}% | ${row.invalid} | ${median} | ${Object.entries(row.fails).map(([k, v]) => `${k} ×${v}`).join('; ')} |`)
+    lines.push(`| ${row.variant} | ${row.scenario} | ${row.pass}/${row.n} | ${(lo * 100).toFixed(0)}–${(hi * 100).toFixed(0)}% | ${row.invalid} | ${median} | ${BLIND ? '(blind)' : Object.entries(row.fails).map(([k, v]) => `${k} ×${v}`).join('; ')} |`)
     const total = totals.get(row.variant) ?? { pass: 0, n: 0 }
     total.pass += row.pass
     total.n += row.n
